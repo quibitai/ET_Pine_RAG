@@ -2,10 +2,19 @@
 
 import { Pinecone } from '@pinecone-database/pinecone';
 
-const INDEX_NAME = process.env.PINECONE_INDEX_NAME; // Removed default here, will check later
+const INDEX_NAME = process.env.PINECONE_INDEX_NAME;
 const API_KEY = process.env.PINECONE_API_KEY;
-const ENVIRONMENT = process.env.PINECONE_ENVIRONMENT; // For classic Pinecone
-const INDEX_HOST = process.env.PINECONE_INDEX_HOST; // For serverless Pinecone
+const ENVIRONMENT = process.env.PINECONE_ENVIRONMENT;
+const INDEX_HOST = process.env.PINECONE_INDEX_HOST;
+
+// --- Add Diagnostic Logging ---
+console.log("--- Pinecone Env Vars Check ---");
+console.log(`- PINECONE_API_KEY present: ${!!API_KEY}`); // Log presence, not the key itself for security
+console.log(`- PINECONE_INDEX_NAME: ${INDEX_NAME}`);
+console.log(`- PINECONE_ENVIRONMENT: ${ENVIRONMENT}`);
+console.log(`- PINECONE_INDEX_HOST: ${INDEX_HOST}`);
+console.log("-----------------------------");
+// --- End Logging ---
 
 // --- Environment Variable Validation ---
 if (!API_KEY) {
