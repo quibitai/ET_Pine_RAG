@@ -1,3 +1,5 @@
+'use server';
+
 import 'server-only';
 
 import { genSaltSync, hashSync } from 'bcrypt-ts';

@@ -1,3 +1,5 @@
+'use server';
+
 // Initialize with Replicate API for Llama-text-embed-v2
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN || '';
 

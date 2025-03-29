@@ -101,7 +101,7 @@ export const GitIcon = () => {
   );
 };
 
-export const BoxIcon = ({ size = 16 }: { size: number }) => {
+export const BoxIcon = ({ size = 16 }: { size?: number }) => {
   return (
     <svg
       height={size}
@@ -120,7 +120,7 @@ export const BoxIcon = ({ size = 16 }: { size: number }) => {
   );
 };
 
-export const HomeIcon = ({ size = 16 }: { size: number }) => {
+export const HomeIcon = ({ size = 16 }: { size?: number }) => {
   return (
     <svg
       height={size}
@@ -139,7 +139,7 @@ export const HomeIcon = ({ size = 16 }: { size: number }) => {
   );
 };
 
-export const GPSIcon = ({ size = 16 }: { size: number }) => {
+export const GPSIcon = ({ size = 16 }: { size?: number }) => {
   return (
     <svg
       height={size}
@@ -160,7 +160,7 @@ export const GPSIcon = ({ size = 16 }: { size: number }) => {
   );
 };
 
-export const InvoiceIcon = ({ size = 16 }: { size: number }) => {
+export const InvoiceIcon = ({ size = 16 }: { size?: number }) => {
   return (
     <svg
       height={size}

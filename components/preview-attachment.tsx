@@ -26,11 +26,11 @@ export const PreviewAttachment = ({
         />
       );
     } else if (contentType === 'application/pdf') {
-      return <FileIcon size={24} className="text-red-500" />;
+      return <span className="text-red-500"><FileIcon size={24} /></span>;
     } else if (contentType === 'text/plain') {
-      return <FileTextIcon size={24} className="text-blue-500" />;
+      return <span className="text-blue-500"><FileTextIcon size={24} /></span>;
     } else if (contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      return <FileTextIcon size={24} className="text-indigo-500" />;
+      return <span className="text-indigo-500"><FileTextIcon size={24} /></span>;
     } else {
       return <FileIcon size={24} />;
     }

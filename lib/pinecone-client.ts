@@ -1,3 +1,5 @@
+'use server';
+
 import { Pinecone } from '@pinecone-database/pinecone';
 
 // This should match your Pinecone index name
