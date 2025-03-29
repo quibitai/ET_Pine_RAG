@@ -30,7 +30,7 @@ import { generateEmbeddings } from '@/lib/ai/utils';
 import { getPineconeIndex } from '@/lib/pinecone-client';
 
 export const maxDuration = 60;
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
