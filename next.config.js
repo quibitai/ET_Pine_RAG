@@ -6,7 +6,8 @@ const nextConfig = {
   // Build configuration
   output: 'standalone',
   typescript: {
-    ignoreBuildErrors: true, // Temporarily allow build with TypeScript errors
+    // ignoreBuildErrors: true, // Set to false or remove
+    ignoreBuildErrors: false,
   },
 
   // Disable header
@@ -17,7 +18,7 @@ const nextConfig = {
     typedRoutes: true,
     
     // Performance improvements
-    optimizePackageImports: ['@/components'],
+    // optimizePackageImports: ['@/components'], // Comment out or remove
   },
 }
 
