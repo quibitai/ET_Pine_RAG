@@ -1,0 +1,23 @@
+# Development files
+.git
+.github
+.vscode
+README.md
+DEVELOPMENT_CHECKLIST.md
+
+# Testing
+test-documents
+
+# Build artifacts
+.next
+node_modules
+
+# Temporary files
+tmp/
+/tmp/
+
+# Local env files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local 
