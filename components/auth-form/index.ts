@@ -1,1 +1,1 @@
-export { AuthForm } from '@/components/auth-form'; 
+export { AuthForm } from '../auth-form'; 

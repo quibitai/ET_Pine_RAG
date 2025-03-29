@@ -1,1 +1,1 @@
-export { SubmitButton } from '@/components/submit-button'; 
+export { SubmitButton } from '../submit-button'; 
