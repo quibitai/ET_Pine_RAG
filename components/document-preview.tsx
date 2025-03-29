@@ -89,11 +89,18 @@ export function DocumentPreview({
     : artifact.status === 'streaming'
       ? {
           title: artifact.title,
-          kind: artifact.kind,
+          kind: ['text', 'code', 'image', 'sheet'].includes(artifact.kind) 
+            ? artifact.kind as 'text' | 'code' | 'image' | 'sheet'
+            : 'text',
           content: artifact.content,
           id: artifact.documentId,
           createdAt: new Date(),
           userId: 'noop',
+          fileUrl: null,
+          fileName: null,
+          fileSize: null,
+          fileType: null,
+          processingStatus: null
         }
       : null;
 
@@ -108,7 +115,9 @@ export function DocumentPreview({
       />
       <DocumentHeader
         title={document.title}
-        kind={document.kind}
+        kind={['text', 'code', 'image', 'sheet'].includes(document.kind) 
+          ? document.kind as 'text' | 'code' | 'image' | 'sheet'
+          : 'text'}
         isStreaming={artifact.status === 'streaming'}
       />
       <DocumentContent document={document} />
