@@ -9,26 +9,15 @@ const nextConfig = {
     ignoreBuildErrors: true, // Temporarily allow build with TypeScript errors
   },
 
-  // Asset optimization
-  optimizeFonts: true,
+  // Disable header
   poweredByHeader: false,
   
   experimental: {
-    // Improved production debugging
-    logging: {
-      level: 'verbose', // Set to 'verbose' to see detailed build logs
-    },
-    
-    instrumentationHook: true,
-    
     // Module resolution
     typedRoutes: true,
     
     // Performance improvements
     optimizePackageImports: ['@/components'],
-    
-    // Safety features
-    serverComponentsExternalPackages: [],
   },
 }
 
