@@ -1,1 +1,1 @@
-export { AuthForm } from '../auth-form.tsx'; 
+export { AuthForm } from '@/components/auth-form'; 

@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useState } from 'react';
 
-import { AuthForm } from '@/components/auth-form/index';
-import { SubmitButton } from '@/components/submit-button/index';
+import { AuthForm } from '@/components/auth-form';
+import { SubmitButton } from '@/components/submit-button';
 
 import { register, type RegisterActionState } from '../actions';
-import { toast } from '@/components/toast/index';
+import { toast } from '@/components/toast';
 
 export default function Page() {
   const router = useRouter();

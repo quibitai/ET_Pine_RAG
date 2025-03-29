@@ -1,1 +1,1 @@
-export { SubmitButton } from '../submit-button.tsx'; 
+export { SubmitButton } from '@/components/submit-button'; 
