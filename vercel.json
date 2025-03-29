@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "pnpm install --no-frozen-lockfile && pnpm install tailwindcss@^3.4.1 postcss@^8 @tailwindcss/typography@^0.5.15 && pnpm build",
+  "buildCommand": "pnpm build",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "framework": "nextjs",
   "regions": ["sfo1"],
