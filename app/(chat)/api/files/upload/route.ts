@@ -109,16 +109,36 @@ export async function POST(request: Request) {
     try {
       console.log(`Uploading file to Vercel Blob...`);
       
+      // Log environment variables (without revealing full tokens)
+      const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+      console.log(`BLOB_READ_WRITE_TOKEN present: ${!!blobToken}`);
+      if (!blobToken) {
+        throw new Error('BLOB_READ_WRITE_TOKEN environment variable is missing');
+      }
+      
       // Generate a unique file path to avoid name collisions
       const uniqueFilename = `${Date.now()}-${filename}`;
       
-      // Upload directly to Vercel Blob
-      const data = await put(uniqueFilename, Buffer.from(fileBuffer), {
-        contentType: file.type,
-        access: 'public',
-      });
-      
-      console.log('File upload successful:', data.url);
+      // Upload directly to Vercel Blob with enhanced error handling
+      let data;
+      try {
+        data = await put(uniqueFilename, Buffer.from(fileBuffer), {
+          contentType: file.type,
+          access: 'public',
+        });
+        console.log('File upload successful:', data.url);
+      } catch (blobError: any) {
+        console.error('Vercel Blob specific error:', blobError);
+        console.error('Error details:', blobError.message);
+        console.error('Error name:', blobError.name);
+        if (blobError.response) {
+          console.error('Error response:', blobError.response.status, blobError.response.statusText);
+        }
+        return NextResponse.json({ 
+          error: 'Failed to upload file to storage', 
+          details: blobError.message
+        }, { status: 500 });
+      }
       
       // Save the document reference in the database
       const documentId = randomUUID();
@@ -168,12 +188,20 @@ export async function POST(request: Request) {
         url: data.url,
         name: filename
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading file:', error);
-      return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
+      console.error('Error stack:', error.stack);
+      return NextResponse.json({ 
+        error: 'Failed to upload file', 
+        details: error instanceof Error ? error.message : String(error) 
+      }, { status: 500 });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Unhandled error in upload API route:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Error stack:', error.stack);
+    return NextResponse.json({ 
+      error: 'Internal server error', 
+      details: error instanceof Error ? error.message : String(error) 
+    }, { status: 500 });
   }
 }
