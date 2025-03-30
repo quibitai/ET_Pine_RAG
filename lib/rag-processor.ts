@@ -221,10 +221,61 @@ export async function processFileForRag({
       
       // Upload in batches to avoid rate limiting
       if (vectors.length >= batchSize || i === textChunks.length - 1) {
-        console.log(`Upserting batch of ${vectors.length} vectors to Pinecone`);
-        await index.upsert(vectors);
-        console.log('Upsert complete');
-        vectors.length = 0; // Clear the array
+        const currentBatchSize = vectors.length;
+        const indexNameToLog = process.env.PINECONE_INDEX_NAME || 'undefined_index';
+        console.log(`Attempting to upsert batch of ${currentBatchSize} vectors to Pinecone index '${indexNameToLog}'...`);
+        console.log(`Vector batch details: documentId=${documentId}, first vector ID=${vectors[0]?.id || 'unknown'}`);
+        console.time('pinecone_upsert_batch');
+        
+        try {
+          // Ensure the index object is valid before calling upsert
+          if (!index || typeof index.upsert !== 'function') {
+            throw new Error('Pinecone index object is invalid or upsert method not found.');
+          }
+          
+          // Log first vector's dimension for verification
+          if (vectors.length > 0 && vectors[0].values) {
+            console.log(`First vector dimensions: ${vectors[0].values.length}`);
+          }
+          
+          // Perform the upsert operation
+          await index.upsert(vectors);
+          
+          console.timeEnd('pinecone_upsert_batch');
+          console.log(`✅ Batch upsert successful for ${currentBatchSize} vectors to index '${indexNameToLog}'.`);
+          
+          // Verify upsert with a quick query (optional but helpful)
+          if (vectors.length > 0) {
+            try {
+              console.time('pinecone_verify_upsert');
+              const firstId = vectors[0].id;
+              const describeStats = await index.describeIndexStats();
+              console.log(`Index stats after upsert: totalRecordCount=${describeStats.totalRecordCount}, namespaces=${Object.keys(describeStats.namespaces || {}).length}`);
+              console.timeEnd('pinecone_verify_upsert');
+            } catch (verifyError) {
+              console.warn(`Warning: Could not verify upsert with describeIndexStats:`, verifyError);
+            }
+          }
+        } catch (upsertError) {
+          console.timeEnd('pinecone_upsert_batch');
+          console.error(`❌ Pinecone batch upsert FAILED for index '${indexNameToLog}':`, upsertError);
+          
+          if (upsertError instanceof Error) {
+            console.error(`Upsert Error Details: Name=${upsertError.name}, Message=${upsertError.message}`);
+            console.error(`Stack trace: ${upsertError.stack}`);
+          }
+          
+          // Check common environment issues
+          console.log('Environment check:');
+          console.log(`- PINECONE_API_KEY present: ${!!process.env.PINECONE_API_KEY}`);
+          console.log(`- PINECONE_INDEX_NAME: ${process.env.PINECONE_INDEX_NAME}`);
+          console.log(`- PINECONE_INDEX_HOST: ${process.env.PINECONE_INDEX_HOST}`);
+          
+          // Continue processing other chunks despite the error
+          // Note: You could choose to stop by adding "throw upsertError;" here
+        }
+        
+        vectors.length = 0; // Clear the array regardless of success/fail
       }
     }
     

@@ -71,6 +71,61 @@ async function withRetry<T>(
   throw lastError;
 }
 
+/**
+ * Test function to verify Pinecone connection and index access
+ * This is important to validate that the API key and index name are correct
+ */
+async function testPineconeConnection(client: Pinecone, indexName: string): Promise<boolean> {
+  console.log('🔍 Testing Pinecone connection...');
+  try {
+    // Test 1: List indexes to verify API key has correct permissions
+    console.time('pinecone_list_indexes');
+    try {
+      const indexesList = await client.listIndexes();
+      const foundIndex = indexesList.indexes?.find(idx => idx.name === indexName);
+      console.timeEnd('pinecone_list_indexes');
+      console.log(`Available indexes: ${indexesList.indexes?.map(i => i.name).join(', ')}`);
+      
+      if (!foundIndex) {
+        console.error(`❌ Index "${indexName}" NOT FOUND in available indexes!`);
+        console.log(`Available indexes: ${indexesList.indexes?.map(i => i.name).join(', ') || 'none'}`);
+        return false;
+      }
+      
+      console.log(`✅ Index "${indexName}" found in available indexes.`);
+    } catch (error) {
+      console.timeEnd('pinecone_list_indexes');
+      console.error('❌ Failed to list Pinecone indexes:', error);
+      return false;
+    }
+    
+    // Test 2: Try to get the index
+    const index = client.index(indexName);
+    
+    // Test 3: Describe the index
+    console.time('pinecone_describe_index');
+    try {
+      const stats = await index.describeIndexStats();
+      console.timeEnd('pinecone_describe_index');
+      
+      console.log('✅ Successfully connected to Pinecone index:');
+      console.log(`- Total vectors: ${stats.totalRecordCount}`);
+      console.log(`- Dimensions: ${stats.dimension || 'unknown'}`);
+      console.log(`- Namespaces: ${Object.keys(stats.namespaces || {}).length}`);
+      
+      return true;
+    } catch (error) {
+      console.timeEnd('pinecone_describe_index');
+      console.error('❌ Error describing index:', error);
+      console.error('This suggests the index exists but there may be permission or network issues');
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Unexpected error testing Pinecone connection:', error);
+    return false;
+  }
+}
+
 // --- Initialize Client (Minimal Config) ---
 console.log('Initializing Pinecone client with: apiKey only (minimal config)');
 let pineconeInstance: Pinecone;
@@ -81,6 +136,26 @@ try {
     // Fetch options removed due to type compatibility issues
     // We'll use controller.signal directly in the query method instead
   });
+  
+  // Test connection right after initialization
+  // Use top-level await or wrap in an IIFE
+  (async () => {
+    try {
+      if (INDEX_NAME) {
+        const connectionSuccessful = await testPineconeConnection(pineconeInstance, INDEX_NAME);
+        if (connectionSuccessful) {
+          console.log('✅ Pinecone connection test SUCCESSFUL');
+        } else {
+          console.error('⚠️ Pinecone connection test FAILED - check your API key, index name, and network');
+        }
+      }
+    } catch (error) {
+      console.error('Error during Pinecone connection test:', error);
+    }
+  })().catch(error => {
+    console.error('Unhandled error in Pinecone connection test:', error);
+  });
+  
 } catch (e) {
    console.error("Error during Pinecone client minimal initialization:", e);
    // If even this minimal init fails, re-throw to see the error
