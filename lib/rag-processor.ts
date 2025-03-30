@@ -201,6 +201,13 @@ export async function processFileForRag({
     const vectors = [];
     const batchSize = 10;
     
+    // Add tracking for partial failures
+    let allUpsertsSucceeded = true;
+    let firstErrorMessage = '';
+    let totalChunksProcessed = 0;
+    let successfullyUpsertedChunks = 0;
+    let failedUpsertBatches = 0;
+
     for (let i = 0; i < textChunks.length; i++) {
       const chunk = textChunks[i];
       console.log(`[RAG Processor] Processing chunk ${i + 1}/${textChunks.length}. Ready to generate embedding.`);
@@ -212,13 +219,22 @@ export async function processFileForRag({
         embedding = await generateEmbeddings(chunk);
         console.timeEnd(`embedding_generation_chunk_${i}`);
         console.log(`[RAG Processor] Embedding generated for chunk ${i + 1}. Dimensions: ${embedding?.length}`);
+        totalChunksProcessed++;
       } catch (embeddingError) {
         console.error(`❌ [RAG Processor] Error generating embedding for chunk ${i + 1}:`, embeddingError);
         // Log details about the error
         if (embeddingError instanceof Error) {
           console.error(`Embedding Error Details: Name=${embeddingError.name}, Message=${embeddingError.message}`);
           console.error(`Stack trace: ${embeddingError.stack}`);
+          
+          // If this is the first error, store it
+          if (!firstErrorMessage) {
+            firstErrorMessage = `Embedding error: ${embeddingError.message}`;
+          }
         }
+        // Mark as overall failure
+        allUpsertsSucceeded = false;
+        totalChunksProcessed++;
         // Continue to the next chunk for now
         continue;
       }
@@ -280,9 +296,20 @@ export async function processFileForRag({
               console.warn(`Warning: Could not verify upsert with describeIndexStats:`, verifyError);
             }
           }
+          
+          successfullyUpsertedChunks += currentBatchSize;
         } catch (upsertError) {
           console.timeEnd('pinecone_upsert_batch');
           console.error(`❌ Pinecone batch upsert FAILED for index '${indexNameToLog}':`, upsertError);
+          
+          // Mark as overall failure
+          allUpsertsSucceeded = false;
+          failedUpsertBatches++;
+          
+          // Store first error message if not already set
+          if (!firstErrorMessage && upsertError instanceof Error) {
+            firstErrorMessage = `Upsert error: ${upsertError.message}`;
+          }
           
           if (upsertError instanceof Error) {
             console.error(`Upsert Error Details: Name=${upsertError.name}, Message=${upsertError.message}`);
@@ -297,16 +324,25 @@ export async function processFileForRag({
           
           // Continue processing other chunks despite the error
           // Note: You could choose to stop by adding "throw upsertError;" here
+          
+          vectors.length = 0; // Clear the array regardless of success/fail
         }
-        
-        vectors.length = 0; // Clear the array regardless of success/fail
       }
     }
     
-    // Update status to completed
+    // Update status to completed or failed with detailed message
+    console.log(`RAG processing stats: Processed ${totalChunksProcessed} chunks, successfully upserted ${successfullyUpsertedChunks} chunks, failed ${failedUpsertBatches} batches`);
+
+    const finalStatus = allUpsertsSucceeded ? 'completed' : 'failed';
+    const finalMessage = allUpsertsSucceeded 
+      ? `Successfully processed all ${totalChunksProcessed} chunks`
+      : `Partially failed: ${successfullyUpsertedChunks}/${totalChunksProcessed} chunks processed successfully. ${failedUpsertBatches} batch(es) failed. Error: ${firstErrorMessage || 'Unknown error'}`;
+
+    // Update status
     await updateFileRagStatus({
       id: documentId,
-      processingStatus: 'completed',
+      processingStatus: finalStatus,
+      statusMessage: finalMessage
     });
     
     console.log(`Completed RAG processing for document ${documentId}`);
