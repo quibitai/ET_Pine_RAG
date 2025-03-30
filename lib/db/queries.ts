@@ -461,15 +461,31 @@ export async function addUploadedFileMetadata({
 export async function updateFileRagStatus({
   id,
   processingStatus,
+  statusMessage,
 }: {
   id: string;
   processingStatus: 'pending' | 'processing' | 'completed' | 'failed';
+  statusMessage?: string;
 }) {
   try {
-    console.log(`updateFileRagStatus: Updating document ${id} to status ${processingStatus}`);
+    console.log(`updateFileRagStatus: Updating document ${id} to status ${processingStatus}${statusMessage ? ' with message' : ''}`);
+    
+    // Create update object with optional status message
+    const updateData: { 
+      processingStatus: 'pending' | 'processing' | 'completed' | 'failed'; 
+      statusMessage?: string 
+    } = { 
+      processingStatus 
+    };
+    
+    // Only add statusMessage to update if it's provided
+    if (statusMessage) {
+      updateData.statusMessage = statusMessage;
+    }
+    
     const result = await db
       .update(document)
-      .set({ processingStatus })
+      .set(updateData)
       .where(eq(document.id, id));
     
     console.log(`RAG status update completed for document ${id}`);

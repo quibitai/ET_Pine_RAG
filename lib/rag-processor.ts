@@ -12,17 +12,43 @@ import mammoth from 'mammoth';
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
     console.log('Extracting text from PDF...');
+    console.log(`PDF buffer size: ${buffer.byteLength} bytes`);
+    
+    // Check if buffer is valid
+    if (!buffer || buffer.byteLength === 0) {
+      throw new Error('Empty or invalid PDF buffer');
+    }
+    
+    // Log first few bytes of buffer for debugging
+    const bufferPreview = buffer.slice(0, Math.min(20, buffer.byteLength));
+    console.log(`Buffer preview: ${bufferPreview.toString('hex')}`);
+    
+    // Check PDF header (should start with %PDF-)
+    const header = buffer.slice(0, 5).toString();
+    if (!header.startsWith('%PDF-')) {
+      console.warn(`PDF header check failed. Found: ${header}`);
+    }
     
     // Use minimal options for production reliability
+    console.log('Calling pdfParse with buffer...');
     const result = await pdfParse(buffer);
     
-    console.log(`PDF extraction complete. Extracted ${result.text.length} characters.`);
+    const extractedLength = result.text ? result.text.length : 0;
+    console.log(`PDF extraction complete. Extracted ${extractedLength} characters.`);
+    
+    if (extractedLength === 0) {
+      console.warn('PDF parsing succeeded but extracted 0 characters. This PDF may be image-based or have no text content.');
+      return "This PDF appears to contain no extractable text. It may be image-based or scanned. Please upload a text-based PDF or use a different document format.";
+    }
+    
     return result.text;
   } catch (error) {
     console.error('Error extracting text from PDF:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`PDF extraction error details: ${errorMessage}`);
     
     // Return a fallback message when extraction fails
-    return "This PDF could not be processed due to formatting issues. Please try uploading a different file or a text-based version of this document.";
+    return `This PDF could not be processed due to the following issue: ${errorMessage}. Please try uploading a different file or a text-based version of this document.`;
   }
 }
 
@@ -138,6 +164,7 @@ export async function processFileForRag({
     
     // Download the file
     const fileBuffer = await downloadFile(fileUrl);
+    console.log(`Downloaded file buffer size: ${fileBuffer.byteLength} bytes`);
     
     // Extract text based on file type
     let extractedText = '';
@@ -152,9 +179,10 @@ export async function processFileForRag({
       throw new Error(`Unsupported file type: ${fileType}`);
     }
     
-    // Skip if no text was extracted
+    // Skip if no meaningful text was extracted
     if (!extractedText || extractedText.trim().length === 0) {
-      throw new Error('No text extracted from document');
+      console.warn('No text extracted from document, or text is empty after trimming');
+      throw new Error('No meaningful text extracted from document');
     }
     
     console.log(`Extracted ${extractedText.length} characters from document`);
@@ -172,7 +200,7 @@ export async function processFileForRag({
     
     for (let i = 0; i < textChunks.length; i++) {
       const chunk = textChunks[i];
-      console.log(`Processing chunk ${i + 1}/${textChunks.length}`);
+      console.log(`Processing chunk ${i + 1}/${textChunks.length}, size: ${chunk.length} characters`);
       
       // Generate embeddings for the chunk
       const embedding = await generateEmbeddings(chunk);
@@ -210,11 +238,13 @@ export async function processFileForRag({
     return true;
   } catch (error) {
     console.error(`RAG processing failed for document ${documentId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    // Update status to failed
+    // Update status to failed with error message
     await updateFileRagStatus({
       id: documentId,
       processingStatus: 'failed',
+      statusMessage: errorMessage
     });
     
     return false;
