@@ -3,14 +3,37 @@ import { Pinecone } from '@pinecone-database/pinecone';
 const INDEX_NAME = process.env.PINECONE_INDEX_NAME;
 const API_KEY = process.env.PINECONE_API_KEY;
 const ENVIRONMENT = process.env.PINECONE_ENVIRONMENT;
-const INDEX_HOST = process.env.PINECONE_INDEX_HOST || 'https://et-mf0m9e4.svc.aped-4627-b74a.pinecone.io';
+const INDEX_HOST = process.env.PINECONE_INDEX_HOST;
 
 // --- Add Diagnostic Logging ---
 console.log("--- Pinecone Env Vars Check ---");
 console.log(`- PINECONE_API_KEY present: ${!!API_KEY}`); // Log presence, not the key itself for security
 console.log(`- PINECONE_INDEX_NAME: ${INDEX_NAME}`);
 console.log(`- PINECONE_ENVIRONMENT: ${ENVIRONMENT}`);
-console.log(`- PINECONE_INDEX_HOST: ${INDEX_HOST}`);
+
+// Enhanced host validation and logging
+if (!INDEX_HOST) {
+  console.error('⚠️ CRITICAL: PINECONE_INDEX_HOST environment variable is not set');
+  console.error('Connection to Pinecone index will likely fail');
+} else {
+  // Check if the host URL is properly formatted
+  try {
+    const hostUrl = new URL(INDEX_HOST);
+    console.log(`- PINECONE_INDEX_HOST: ${INDEX_HOST}`);
+    console.log(`- Host validation: Protocol=${hostUrl.protocol}, Domain=${hostUrl.hostname}`);
+    
+    // Further validations
+    if (!hostUrl.hostname.includes('.svc.')) {
+      console.warn(`⚠️ WARNING: Pinecone host URL doesn't contain '.svc.' which is typical in Pinecone hosts`);
+    }
+    if (!hostUrl.hostname.includes('pinecone.io')) {
+      console.warn(`⚠️ WARNING: Pinecone host URL doesn't end with 'pinecone.io' which is typical in Pinecone hosts`);
+    }
+  } catch (urlError) {
+    console.error(`❌ ERROR: PINECONE_INDEX_HOST value "${INDEX_HOST}" is not a valid URL`);
+  }
+}
+
 console.log(`- Using OpenAI text-embedding-3-large (3072 dimensions)`);
 console.log("-----------------------------");
 // --- End Logging ---
@@ -22,8 +45,9 @@ if (!API_KEY) {
 if (!INDEX_NAME) {
    throw new Error('PINECONE_INDEX_NAME environment variable is not defined.');
 }
-// You can keep or remove the other checks/warnings for INDEX_HOST/ENVIRONMENT
-// as they won't affect the constructor call directly in this approach.
+if (!INDEX_HOST) {
+  throw new Error('PINECONE_INDEX_HOST environment variable is not defined. This is required for connecting to your Pinecone index.');
+}
 
 // Configuration constants for timeouts and retries
 const CONFIG = {
@@ -89,6 +113,11 @@ async function testPineconeConnection(client: Pinecone, indexName: string): Prom
       if (!foundIndex) {
         console.error(`❌ Index "${indexName}" NOT FOUND in available indexes!`);
         console.log(`Available indexes: ${indexesList.indexes?.map(i => i.name).join(', ') || 'none'}`);
+        console.warn(`TROUBLESHOOTING: 
+          1. Check that "${indexName}" is spelled correctly (case-sensitive).
+          2. Verify your API key has access to this index.
+          3. Ensure the index exists and hasn't been deleted.
+        `);
         return false;
       }
       
@@ -96,6 +125,11 @@ async function testPineconeConnection(client: Pinecone, indexName: string): Prom
     } catch (error) {
       console.timeEnd('pinecone_list_indexes');
       console.error('❌ Failed to list Pinecone indexes:', error);
+      console.error(`TROUBLESHOOTING API KEY ERROR:
+        1. Your API key may be invalid or expired.
+        2. Your API key may not have permission to list indexes.
+        3. Check for network issues or Pinecone service outages.
+      `);
       return false;
     }
     
@@ -117,6 +151,32 @@ async function testPineconeConnection(client: Pinecone, indexName: string): Prom
     } catch (error) {
       console.timeEnd('pinecone_describe_index');
       console.error('❌ Error describing index:', error);
+      
+      // Provide specific troubleshooting based on error type
+      if (error instanceof Error) {
+        if (error.message.includes('Failed to connect')) {
+          console.error(`TROUBLESHOOTING HOST CONNECTION ERROR:
+            1. Verify your PINECONE_INDEX_HOST is correct: ${process.env.PINECONE_INDEX_HOST}
+            2. Go to https://app.pinecone.io, open your index "${indexName}", and compare the Host URL
+            3. IMPORTANT: The host URL should look like: "https://[index-name]-[random-id].svc.[region].pinecone.io"
+            4. Copy the exact Host URL from the Pinecone console and update your environment variable
+            5. Check for network/firewall issues blocking connections to Pinecone
+          `);
+        } else if (error.message.includes('not found') || error.message.includes('404')) {
+          console.error(`TROUBLESHOOTING INDEX NOT FOUND:
+            1. Your index "${indexName}" may not exist at the host URL: ${process.env.PINECONE_INDEX_HOST}
+            2. Each index has its own unique host URL - make sure you're using the host for this specific index
+            3. Go to Pinecone console and verify the correct host URL for index "${indexName}"
+          `);
+        } else {
+          console.error(`GENERAL TROUBLESHOOTING:
+            1. Check your Pinecone environment variables
+            2. Verify your index is in "Ready" state in the Pinecone console
+            3. Ensure your account has sufficient quota for this index
+          `);
+        }
+      }
+      
       console.error('This suggests the index exists but there may be permission or network issues');
       return false;
     }
@@ -126,15 +186,15 @@ async function testPineconeConnection(client: Pinecone, indexName: string): Prom
   }
 }
 
-// --- Initialize Client (Minimal Config) ---
-console.log('Initializing Pinecone client with: apiKey only (minimal config)');
+// --- Initialize Client with explicit host configuration ---
+console.log('Initializing Pinecone client with explicit host configuration...');
 let pineconeInstance: Pinecone;
 try {
-  // Initialize with ONLY the apiKey
+  // Initialize with apiKey AND host configuration
   pineconeInstance = new Pinecone({
     apiKey: API_KEY,
-    // Fetch options removed due to type compatibility issues
-    // We'll use controller.signal directly in the query method instead
+    // Explicitly set the host URL from environment variable
+    ...(INDEX_HOST ? { host: INDEX_HOST } : {})
   });
   
   // Test connection right after initialization
@@ -142,11 +202,12 @@ try {
   (async () => {
     try {
       if (INDEX_NAME) {
+        console.log(`Testing connection to Pinecone index '${INDEX_NAME}' at host '${INDEX_HOST}'...`);
         const connectionSuccessful = await testPineconeConnection(pineconeInstance, INDEX_NAME);
         if (connectionSuccessful) {
           console.log('✅ Pinecone connection test SUCCESSFUL');
         } else {
-          console.error('⚠️ Pinecone connection test FAILED - check your API key, index name, and network');
+          console.error('⚠️ Pinecone connection test FAILED - check your API key, index name, and host URL');
         }
       }
     } catch (error) {
@@ -157,7 +218,7 @@ try {
   });
   
 } catch (e) {
-   console.error("Error during Pinecone client minimal initialization:", e);
+   console.error("Error during Pinecone client initialization:", e);
    // If even this minimal init fails, re-throw to see the error
    throw e;
 }
