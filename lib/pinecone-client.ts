@@ -23,42 +23,24 @@ if (!API_KEY) {
 if (!INDEX_NAME) {
    throw new Error('PINECONE_INDEX_NAME environment variable is not defined.');
 }
-// Ensure at least one connection method is provided
-if (!INDEX_HOST && !ENVIRONMENT) {
-    // Depending on the Pinecone library version/setup, one might be required.
-     throw new Error('Neither PINECONE_ENVIRONMENT nor PINECONE_INDEX_HOST is defined. Please provide one for Pinecone client configuration.');
-}
+// You can keep or remove the other checks/warnings for INDEX_HOST/ENVIRONMENT
+// as they won't affect the constructor call directly in this approach.
 
-// --- Determine Configuration and Initialize Client ---
+// --- Initialize Client (Minimal Config) ---
+console.log('Initializing Pinecone client with: apiKey only (minimal config)');
 let pineconeInstance: Pinecone;
-
-if (INDEX_HOST) {
-  // Serverless configuration (prioritized)
-  if (ENVIRONMENT) {
-      console.warn('Both PINECONE_INDEX_HOST and PINECONE_ENVIRONMENT are defined. Using PINECONE_INDEX_HOST (serverless).');
-  }
-  console.log('Initializing Pinecone client for serverless (apiKey, indexHost)');
-  // Use type assertion to bypass TypeScript's type checking
+try {
+  // Initialize with ONLY the apiKey
   pineconeInstance = new Pinecone({
     apiKey: API_KEY,
-    // @ts-ignore - indexHost is valid for serverless Pinecone
-    indexHost: INDEX_HOST,
   });
-} else if (ENVIRONMENT) {
-  // Classic configuration
-  console.log('Initializing Pinecone client for classic (apiKey, environment)');
-  // Use type assertion to bypass TypeScript's type checking
-  pineconeInstance = new Pinecone({
-    apiKey: API_KEY,
-    // @ts-ignore - environment is valid for classic Pinecone
-    environment: ENVIRONMENT,
-  });
-} else {
-  // This case should have been caught by validation above, but reiterate error
-  throw new Error('Pinecone configuration error: Missing required PINECONE_INDEX_HOST or PINECONE_ENVIRONMENT.');
+} catch (e) {
+   console.error("Error during Pinecone client minimal initialization:", e);
+   // If even this minimal init fails, re-throw to see the error
+   throw e;
 }
 
-// Export the correctly initialized instance
+// Export the initialized instance
 export const pineconeClient = pineconeInstance;
 
 // --- Helper Function ---
