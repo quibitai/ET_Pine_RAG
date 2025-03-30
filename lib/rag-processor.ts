@@ -149,20 +149,56 @@ export async function processFileForRag({
   fileType: string;
   userId: string;
 }): Promise<boolean> {
+  console.log(`[RAG Processor ENTRY] Function called for document ${documentId}, fileUrl: ${fileUrl}`);
+  
   try {
-    console.log(`Starting RAG processing for document ${documentId}`);
+    console.log(`[RAG Processor TRY START] Starting main logic for document ${documentId}`);
     
-    // Update status to processing
-    await updateFileRagStatus({
-      id: documentId,
-      processingStatus: 'processing',
-    });
+    // Update status to processing first
+    try {
+      console.log(`[RAG Processor] Attempting to update status to 'processing' for document ID: ${documentId}`);
+      await updateFileRagStatus({
+        id: documentId,
+        processingStatus: 'processing',
+      });
+      console.log(`[RAG Processor] Status updated to processing for ${documentId}`);
+    } catch (statusError) {
+      console.error(`❌ [RAG Processor] Error updating document status to 'processing':`, statusError);
+      return false; // Stop further processing
+    }
     
     // Get document details from database for source information
-    const docDetails = await getDocumentById({ id: documentId });
-    const documentName = docDetails?.fileName || 'Unknown document';
+    let docDetails;
+    try {
+      console.log(`[RAG Processor] Attempting to fetch document details from DB for ID: ${documentId}`);
+      docDetails = await getDocumentById({ id: documentId });
+      console.log(`[RAG Processor] Fetched document details: ${docDetails ? 'Found' : 'Not Found'}`);
+    } catch (dbError) {
+      console.error(`❌ [RAG Processor] DB Error fetching document details for ID: ${documentId}`, dbError);
+      // Update status to failed and exit
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'failed', 
+        statusMessage: 'DB Error on fetch: ' + (dbError instanceof Error ? dbError.message : 'Unknown error') 
+      });
+      return false; // Stop further processing
+    }
+
+    if (!docDetails) {
+      console.error(`❌ [RAG Processor] Document metadata not found in DB for ID: ${documentId}. Aborting processing.`);
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'failed', 
+        statusMessage: 'Document metadata not found in database.' 
+      });
+      return false; // Stop further processing
+    }
+    
+    const documentName = docDetails.fileName || 'Unknown document';
+    console.log(`[RAG Processor] Document name set to: ${documentName}`);
     
     // Download the file
+    console.log(`[RAG Processor] About to download file from URL: ${fileUrl}`);
     const fileBuffer = await downloadFile(fileUrl);
     console.log(`Downloaded file buffer size: ${fileBuffer.byteLength} bytes`);
     

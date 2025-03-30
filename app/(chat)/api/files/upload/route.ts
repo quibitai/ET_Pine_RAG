@@ -48,17 +48,23 @@ const createRagDocument = async (documentId: string, fileUrl: string, fileType: 
     // Import dynamically to avoid circular dependencies
     const { processFileForRag } = await import('@/lib/rag-processor');
     
-    // Process the file for RAG
-    processFileForRag({
-      documentId,
-      fileUrl,
-      fileType,
-      userId,
-    }).catch((error) => {
-      console.error(`Failed to process document for RAG:`, error);
-      // Don't throw the error - let the processing happen asynchronously
-      // and update the status in the database as needed
-    });
+    // Process the file for RAG - use await for diagnostic testing
+    try {
+      console.log(`[TEST_SYNC] About to call processFileForRag synchronously for document ${documentId}`);
+      await processFileForRag({
+        documentId,
+        fileUrl,
+        fileType,
+        userId,
+      });
+      console.log(`[TEST_SYNC] Completed synchronous RAG processing for document ${documentId}`);
+    } catch (processingError) {
+      console.error(`[TEST_SYNC] Error during synchronous RAG processing:`, processingError);
+      if (processingError instanceof Error) {
+        console.error(`[TEST_SYNC] Error details: ${processingError.message}`);
+        console.error(`[TEST_SYNC] Stack trace: ${processingError.stack}`);
+      }
+    }
     
     return true;
   } catch (error) {
@@ -170,13 +176,14 @@ export async function POST(request: Request) {
       ];
       
       if (documentTypes.includes(file.type)) {
-        console.log('Document type is eligible for RAG processing');
+        console.log('Document type is eligible for RAG processing. Attempting synchronous call...');
         try {
-          createRagDocument(documentId, data.url, file.type, userId);
-          console.log('RAG processing triggered');
+          // Use await here to run synchronously for diagnostic purposes
+          await createRagDocument(documentId, data.url, file.type, userId);
+          console.log('Synchronous RAG processing trigger completed.');
         } catch (error) {
-          console.error('Failed to trigger RAG processing:', error);
-          // Don't fail the request - RAG processing is secondary to file upload
+          console.error('Error during synchronous RAG processing trigger:', error);
+          // Still don't fail the request - RAG processing is secondary to file upload
         }
       } else {
         console.log('Document type not eligible for RAG processing');
