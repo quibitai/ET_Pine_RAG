@@ -15,12 +15,16 @@ console.log(`- PINECONE_ENVIRONMENT: ${ENVIRONMENT}`);
 if (!INDEX_HOST) {
   console.error('⚠️ CRITICAL: PINECONE_INDEX_HOST environment variable is not set');
   console.error('Connection to Pinecone index will likely fail');
+  console.error('Note: While Pinecone SDK v2.x does not use this directly in the client constructor,'); 
+  console.error('it is still required for some operations and diagnostics in your application');
 } else {
   // Check if the host URL is properly formatted
   try {
     const hostUrl = new URL(INDEX_HOST);
     console.log(`- PINECONE_INDEX_HOST: ${INDEX_HOST}`);
     console.log(`- Host validation: Protocol=${hostUrl.protocol}, Domain=${hostUrl.hostname}`);
+    console.log('- Note: Pinecone SDK v2.x does not use this host directly in client initialization');
+    console.log('  but your application may use it for diagnostics or other operations');
     
     // Further validations
     if (!hostUrl.hostname.includes('.svc.')) {
@@ -186,15 +190,14 @@ async function testPineconeConnection(client: Pinecone, indexName: string): Prom
   }
 }
 
-// --- Initialize Client with explicit host configuration ---
-console.log('Initializing Pinecone client with explicit host configuration...');
+// --- Initialize Client with API key only ---
+console.log('Initializing Pinecone client with API key only...');
 let pineconeInstance: Pinecone;
 try {
-  // Initialize with apiKey AND host configuration
+  // Initialize ONLY with apiKey - do not include host property
   pineconeInstance = new Pinecone({
-    apiKey: API_KEY,
-    // Explicitly set the host URL from environment variable
-    ...(INDEX_HOST ? { host: INDEX_HOST } : {})
+    apiKey: API_KEY
+    // DO NOT pass host: INDEX_HOST here - it causes validation errors in Pinecone client v2.x
   });
   
   // Test connection right after initialization
@@ -208,6 +211,8 @@ try {
           console.log('✅ Pinecone connection test SUCCESSFUL');
         } else {
           console.error('⚠️ Pinecone connection test FAILED - check your API key, index name, and host URL');
+          console.log('Note: The host URL is required in your environment variables but NOT used in client initialization');
+          console.log('Pinecone SDK v2.x automatically discovers the correct host based on index name');
         }
       }
     } catch (error) {
