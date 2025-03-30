@@ -191,6 +191,9 @@ export async function processFileForRag({
     const textChunks = chunkText(extractedText);
     console.log(`Split text into ${textChunks.length} chunks`);
     
+    // Add pre-index log
+    console.log('[RAG Processor] Attempting to get Pinecone index object...');
+    
     // Get Pinecone index
     const index = getPineconeIndex();
     
@@ -200,10 +203,31 @@ export async function processFileForRag({
     
     for (let i = 0; i < textChunks.length; i++) {
       const chunk = textChunks[i];
-      console.log(`Processing chunk ${i + 1}/${textChunks.length}, size: ${chunk.length} characters`);
+      console.log(`[RAG Processor] Processing chunk ${i + 1}/${textChunks.length}. Ready to generate embedding.`);
       
-      // Generate embeddings for the chunk
-      const embedding = await generateEmbeddings(chunk);
+      // Generate embeddings for the chunk - wrap in try/catch
+      let embedding;
+      try {
+        console.time(`embedding_generation_chunk_${i}`);
+        embedding = await generateEmbeddings(chunk);
+        console.timeEnd(`embedding_generation_chunk_${i}`);
+        console.log(`[RAG Processor] Embedding generated for chunk ${i + 1}. Dimensions: ${embedding?.length}`);
+      } catch (embeddingError) {
+        console.error(`❌ [RAG Processor] Error generating embedding for chunk ${i + 1}:`, embeddingError);
+        // Log details about the error
+        if (embeddingError instanceof Error) {
+          console.error(`Embedding Error Details: Name=${embeddingError.name}, Message=${embeddingError.message}`);
+          console.error(`Stack trace: ${embeddingError.stack}`);
+        }
+        // Continue to the next chunk for now
+        continue;
+      }
+      
+      // Ensure embedding is valid before proceeding
+      if (!embedding) {
+        console.warn(`[RAG Processor] Skipping upsert for chunk ${i + 1} due to missing embedding.`);
+        continue;
+      }
       
       // Prepare the vector
       vectors.push({

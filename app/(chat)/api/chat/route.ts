@@ -195,30 +195,46 @@ export async function POST(request: Request) {
           }
           
           console.log(`Querying Pinecone with INDEX_NAME: ${INDEX_NAME}, userId filter: ${session.user.id}`);
-          const queryResults = await queryPineconeWithDiagnostics(
-            INDEX_NAME,
-            embedding,
-            5,
-            { userId: session.user.id }
-          );
           
-          if (queryResults.matches && Array.isArray(queryResults.matches) && queryResults.matches.length > 0) {
-            console.time('process_query_results');
-            contextText = queryResults.matches
-              .map(match => {
-                const text = match.metadata?.text || '';
-                const source = match.metadata?.source || 'Unknown document';
-                const score = match.score ? Math.round(match.score * 100) / 100 : 0;
-                return `[SOURCE: ${source}] (relevance: ${score})\n${text}`;
-              })
-              .filter(text => text.length > 0)
-              .join('\n\n');
-            console.timeEnd('process_query_results');
+          // Add pre-query diagnostic log
+          console.log('[API Chat] Attempting to call queryPineconeWithDiagnostics...');
+          
+          try {
+            const queryResults = await queryPineconeWithDiagnostics(
+              INDEX_NAME,
+              embedding,
+              5,
+              { userId: session.user.id }
+            );
             
-            console.log(`Found relevant context (${contextText.length} characters)`);
-            console.log(`Retrieved ${queryResults.matches.length} relevant chunks from documents`);
-          } else {
-            console.log('No relevant context found in user documents');
+            if (queryResults.matches && Array.isArray(queryResults.matches) && queryResults.matches.length > 0) {
+              console.time('process_query_results');
+              contextText = queryResults.matches
+                .map(match => {
+                  const text = match.metadata?.text || '';
+                  const source = match.metadata?.source || 'Unknown document';
+                  const score = match.score ? Math.round(match.score * 100) / 100 : 0;
+                  return `[SOURCE: ${source}] (relevance: ${score})\n${text}`;
+                })
+                .filter(text => text.length > 0)
+                .join('\n\n');
+              console.timeEnd('process_query_results');
+              
+              console.log(`Found relevant context (${contextText.length} characters)`);
+              console.log(`Retrieved ${queryResults.matches.length} relevant chunks from documents`);
+            } else {
+              console.log('No relevant context found in user documents');
+            }
+          } catch (queryError) {
+            console.error('❌ [API Chat] Error executing queryPineconeWithDiagnostics:', queryError);
+            // Log more details if possible
+            if (queryError instanceof Error) {
+              console.error(`Query Error Details: Name=${queryError.name}, Message=${queryError.message}`);
+              console.error(`Stack trace: ${queryError.stack}`);
+            }
+            // Proceed without Pinecone context
+            contextText = '';
+            console.log('[API Chat] Proceeding without Pinecone context due to query error.');
           }
         } catch (pineconeError) {
           console.error('Error in Pinecone query operation:', pineconeError);
