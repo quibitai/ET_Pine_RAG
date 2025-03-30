@@ -22,18 +22,26 @@ export async function generateEmbeddings(text: string): Promise<number[]> {
   console.log('=== Starting embedding generation ===');
   
   try {
+    // Enhanced API key validation - check early and provide detailed error message
+    if (!OPENAI_API_KEY) {
+      console.error('❌ CRITICAL ERROR: OPENAI_API_KEY environment variable is missing or empty');
+      throw new Error('OpenAI API key is not configured');
+    }
+    
+    // Check API key format (basic validation - should start with "sk-" for OpenAI keys)
+    if (!OPENAI_API_KEY.startsWith('sk-')) {
+      console.warn('⚠️ WARNING: OPENAI_API_KEY may be invalid - does not start with "sk-"');
+      console.log(`OPENAI_API_KEY format: ${OPENAI_API_KEY.substring(0, 4)}... (showing first 4 chars only)`);
+    }
+    
+    console.log('✅ OPENAI_API_KEY environment variable is present');
+    
     // Ensure the text isn't too long for the embedding model
     // text-embedding-3-large has an 8191 token limit
     const originalLength = text.length;
     const truncatedText = text.slice(0, 30000); // approximate character limit
     
     console.log(`Generating embeddings for text (original length: ${originalLength}, truncated: ${truncatedText.length})`);
-    
-    // Check for OpenAI API key
-    if (!OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEY environment variable is missing or empty');
-      throw new Error('OpenAI API key is not configured');
-    }
     
     console.log('Using OpenAI text-embedding-3-large model');
     
