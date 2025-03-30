@@ -235,8 +235,9 @@ export async function processFileForRag({
     
     // Process chunks and upload to Pinecone
     const vectors = [];
-    const batchSize = 10;
-    
+    const batchSize = 5; // Reduced from 10 to 5 to avoid overwhelming the API
+    const batchDelay = 1000; // 1 second delay between batches
+
     // Add tracking for partial failures
     let allUpsertsSucceeded = true;
     let firstErrorMessage = '';
@@ -297,72 +298,96 @@ export async function processFileForRag({
       
       // Upload in batches to avoid rate limiting
       if (vectors.length >= batchSize || i === textChunks.length - 1) {
+        // Add a small delay between batches to avoid overwhelming the API
+        if (i > 0 && vectors.length > 0) {
+          console.log(`[RAG Processor] Adding delay of ${batchDelay}ms before processing next batch to avoid rate limiting...`);
+          await new Promise(resolve => setTimeout(resolve, batchDelay));
+        }
+        
         const currentBatchSize = vectors.length;
         const indexNameToLog = process.env.PINECONE_INDEX_NAME || 'undefined_index';
         console.log(`Attempting to upsert batch of ${currentBatchSize} vectors to Pinecone index '${indexNameToLog}'...`);
         console.log(`Vector batch details: documentId=${documentId}, first vector ID=${vectors[0]?.id || 'unknown'}`);
         console.time('pinecone_upsert_batch');
         
-        try {
-          // Ensure the index object is valid before calling upsert
-          if (!index || typeof index.upsert !== 'function') {
-            throw new Error('Pinecone index object is invalid or upsert method not found.');
-          }
-          
-          // Log first vector's dimension for verification
-          if (vectors.length > 0 && vectors[0].values) {
-            console.log(`First vector dimensions: ${vectors[0].values.length}`);
-          }
-          
-          // Perform the upsert operation
-          await index.upsert(vectors);
-          
-          console.timeEnd('pinecone_upsert_batch');
-          console.log(`✅ Batch upsert successful for ${currentBatchSize} vectors to index '${indexNameToLog}'.`);
-          
-          // Verify upsert with a quick query (optional but helpful)
-          if (vectors.length > 0) {
-            try {
-              console.time('pinecone_verify_upsert');
-              const firstId = vectors[0].id;
-              const describeStats = await index.describeIndexStats();
-              console.log(`Index stats after upsert: totalRecordCount=${describeStats.totalRecordCount}, namespaces=${Object.keys(describeStats.namespaces || {}).length}`);
-              console.timeEnd('pinecone_verify_upsert');
-            } catch (verifyError) {
-              console.warn(`Warning: Could not verify upsert with describeIndexStats:`, verifyError);
+        // Add max retries for Pinecone upsert
+        const maxUpsertRetries = 3;
+        let upsertRetryCount = 0;
+        let upsertSucceeded = false;
+        
+        while (upsertRetryCount < maxUpsertRetries && !upsertSucceeded) {
+          try {
+            // Ensure the index object is valid before calling upsert
+            if (!index || typeof index.upsert !== 'function') {
+              throw new Error('Pinecone index object is invalid or upsert method not found.');
+            }
+            
+            // Log first vector's dimension for verification
+            if (vectors.length > 0 && vectors[0].values) {
+              console.log(`First vector dimensions: ${vectors[0].values.length}`);
+            }
+            
+            // Perform the upsert operation
+            console.log(`[Pinecone Upsert] Attempt ${upsertRetryCount + 1}/${maxUpsertRetries}`);
+            await index.upsert(vectors);
+            
+            console.timeEnd('pinecone_upsert_batch');
+            console.log(`✅ Batch upsert successful for ${currentBatchSize} vectors to index '${indexNameToLog}'.`);
+            upsertSucceeded = true;
+            
+            // Verify upsert with a quick query (optional but helpful)
+            if (vectors.length > 0) {
+              try {
+                console.time('pinecone_verify_upsert');
+                const firstId = vectors[0].id;
+                const describeStats = await index.describeIndexStats();
+                console.log(`Index stats after upsert: totalRecordCount=${describeStats.totalRecordCount}, namespaces=${Object.keys(describeStats.namespaces || {}).length}`);
+                console.timeEnd('pinecone_verify_upsert');
+              } catch (verifyError) {
+                console.warn(`Warning: Could not verify upsert with describeIndexStats:`, verifyError);
+              }
+            }
+            
+            successfullyUpsertedChunks += currentBatchSize;
+          } catch (upsertError) {
+            upsertRetryCount++;
+            
+            console.timeEnd('pinecone_upsert_batch');
+            console.error(`❌ Pinecone batch upsert FAILED for index '${indexNameToLog}' (Attempt ${upsertRetryCount}/${maxUpsertRetries}):`, upsertError);
+            
+            // Mark as overall failure
+            allUpsertsSucceeded = false;
+            
+            // Store first error message if not already set
+            if (!firstErrorMessage && upsertError instanceof Error) {
+              firstErrorMessage = `Upsert error: ${upsertError.message}`;
+            }
+            
+            if (upsertError instanceof Error) {
+              console.error(`Upsert Error Details: Name=${upsertError.name}, Message=${upsertError.message}`);
+              console.error(`Stack trace: ${upsertError.stack}`);
+            }
+            
+            // Check common environment issues
+            console.log('Environment check:');
+            console.log(`- PINECONE_API_KEY present: ${!!process.env.PINECONE_API_KEY}`);
+            console.log(`- PINECONE_INDEX_NAME: ${process.env.PINECONE_INDEX_NAME}`);
+            console.log(`- PINECONE_INDEX_HOST: ${process.env.PINECONE_INDEX_HOST}`);
+            
+            // If not the last retry, add a delay before the next attempt
+            if (upsertRetryCount < maxUpsertRetries) {
+              const retryDelay = 1000 * upsertRetryCount; // Exponential backoff
+              console.log(`Retrying upsert after ${retryDelay}ms delay...`);
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+            } else {
+              // All retries failed
+              failedUpsertBatches++;
+              console.error(`All ${maxUpsertRetries} attempts to upsert batch failed. Moving to next batch.`);
             }
           }
-          
-          successfullyUpsertedChunks += currentBatchSize;
-        } catch (upsertError) {
-          console.timeEnd('pinecone_upsert_batch');
-          console.error(`❌ Pinecone batch upsert FAILED for index '${indexNameToLog}':`, upsertError);
-          
-          // Mark as overall failure
-          allUpsertsSucceeded = false;
-          failedUpsertBatches++;
-          
-          // Store first error message if not already set
-          if (!firstErrorMessage && upsertError instanceof Error) {
-            firstErrorMessage = `Upsert error: ${upsertError.message}`;
-          }
-          
-          if (upsertError instanceof Error) {
-            console.error(`Upsert Error Details: Name=${upsertError.name}, Message=${upsertError.message}`);
-            console.error(`Stack trace: ${upsertError.stack}`);
-          }
-          
-          // Check common environment issues
-          console.log('Environment check:');
-          console.log(`- PINECONE_API_KEY present: ${!!process.env.PINECONE_API_KEY}`);
-          console.log(`- PINECONE_INDEX_NAME: ${process.env.PINECONE_INDEX_NAME}`);
-          console.log(`- PINECONE_INDEX_HOST: ${process.env.PINECONE_INDEX_HOST}`);
-          
-          // Continue processing other chunks despite the error
-          // Note: You could choose to stop by adding "throw upsertError;" here
-          
-          vectors.length = 0; // Clear the array regardless of success/fail
         }
+        
+        vectors.length = 0; // Clear the array regardless of success/fail
       }
     }
     
