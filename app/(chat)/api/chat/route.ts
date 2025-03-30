@@ -33,6 +33,55 @@ import { getPineconeIndex, queryPineconeWithDiagnostics } from '@/lib/pinecone-c
 export const maxDuration = 60;
 export const runtime = 'nodejs';
 
+/**
+ * Ensures all non-image attachments have a contentType property
+ * This resolves the error: "If the attachment is not an image, it must specify a content type"
+ */
+function ensureAttachmentsHaveContentType(messages: Array<UIMessage>): Array<UIMessage> {
+  return messages.map(message => {
+    // Skip messages without attachments
+    if (!message.experimental_attachments || message.experimental_attachments.length === 0) {
+      return message;
+    }
+
+    // Process attachments to ensure contentType exists for non-image files
+    const fixedAttachments = message.experimental_attachments.map(attachment => {
+      // If contentType already exists, no need to modify
+      if (attachment.contentType) {
+        return attachment;
+      }
+
+      // Try to infer contentType from file extension if missing
+      const filename = attachment.name?.toLowerCase() || '';
+      let inferredContentType = '';
+
+      if (filename.endsWith('.pdf')) {
+        inferredContentType = 'application/pdf';
+      } else if (filename.endsWith('.txt')) {
+        inferredContentType = 'text/plain';
+      } else if (filename.endsWith('.docx')) {
+        inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      } else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
+        inferredContentType = 'image/jpeg';
+      } else if (filename.endsWith('.png')) {
+        inferredContentType = 'image/png';
+      }
+
+      console.log(`Fixed missing contentType for attachment: ${filename} → ${inferredContentType}`);
+      
+      return {
+        ...attachment,
+        contentType: inferredContentType
+      };
+    });
+
+    return {
+      ...message,
+      experimental_attachments: fixedAttachments
+    };
+  });
+}
+
 export async function POST(request: Request) {
   // Start timing the entire POST handler
   console.time('total_request_duration');
@@ -44,7 +93,7 @@ export async function POST(request: Request) {
     console.time('parse_request');
     const {
       id,
-      messages,
+      messages: originalMessages,
       selectedChatModel,
     }: {
       id: string;
@@ -53,7 +102,10 @@ export async function POST(request: Request) {
     } = await request.json();
     console.timeEnd('parse_request');
 
-    console.log("Request parsed: ", { id, messageCount: messages.length, selectedChatModel });
+    console.log("Request parsed: ", { id, messageCount: originalMessages.length, selectedChatModel });
+
+    // Fix contentType issues in messages
+    const messages = ensureAttachmentsHaveContentType(originalMessages);
 
     console.time('authenticate_user');
     const session = await auth();
@@ -229,6 +281,24 @@ Use the above context information to answer the user's question if relevant. Whe
 
     console.log("Creating data stream response with model:", selectedChatModel);
     console.time('stream_text_call');
+    
+    // Add diagnostic log to check message structure before streaming
+    console.log('Messages being sent to streamText:', JSON.stringify(
+      messages.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        parts: msg.parts?.map(part => part.type || 'text'),
+        hasAttachments: !!msg.experimental_attachments?.length,
+        attachmentsCount: msg.experimental_attachments?.length || 0,
+        attachments: msg.experimental_attachments?.map(att => ({
+          name: att.name,
+          hasContentType: !!att.contentType,
+          contentType: att.contentType
+        }))
+      })),
+      null,
+      2
+    ));
     
     const response = createDataStreamResponse({
       execute: (dataStream) => {

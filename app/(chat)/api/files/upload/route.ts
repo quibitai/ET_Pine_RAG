@@ -186,7 +186,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ 
         id: documentId,
         url: data.url,
-        name: filename
+        name: filename,
+        pathname: filename,
+        contentType: file.type
       });
     } catch (error: any) {
       console.error('Error uploading file:', error);
