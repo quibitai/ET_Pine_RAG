@@ -29,8 +29,8 @@ import { myProvider } from '@/lib/ai/providers';
 import { generateEmbeddings } from '@/lib/ai/utils';
 import { getPineconeIndex, queryPineconeWithDiagnostics } from '@/lib/pinecone-client';
 
-// Extended timeout for development purposes to prevent premature timeouts
-export const maxDuration = 300; // 5 minutes instead of 60 seconds
+// Set maxDuration to comply with Vercel Hobby plan limits (max 60 seconds)
+export const maxDuration = 60;
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
