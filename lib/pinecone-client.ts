@@ -3,7 +3,7 @@ import { Pinecone } from '@pinecone-database/pinecone';
 const INDEX_NAME = process.env.PINECONE_INDEX_NAME;
 const API_KEY = process.env.PINECONE_API_KEY;
 const ENVIRONMENT = process.env.PINECONE_ENVIRONMENT;
-const INDEX_HOST = process.env.PINECONE_INDEX_HOST;
+const INDEX_HOST = process.env.PINECONE_INDEX_HOST || 'https://et-mf0m9e4.svc.aped-4627-b74a.pinecone.io';
 
 // --- Add Diagnostic Logging ---
 console.log("--- Pinecone Env Vars Check ---");
@@ -11,6 +11,7 @@ console.log(`- PINECONE_API_KEY present: ${!!API_KEY}`); // Log presence, not th
 console.log(`- PINECONE_INDEX_NAME: ${INDEX_NAME}`);
 console.log(`- PINECONE_ENVIRONMENT: ${ENVIRONMENT}`);
 console.log(`- PINECONE_INDEX_HOST: ${INDEX_HOST}`);
+console.log(`- Using OpenAI text-embedding-3-large (3072 dimensions)`);
 console.log("-----------------------------");
 // --- End Logging ---
 
