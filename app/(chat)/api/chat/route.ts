@@ -29,13 +29,15 @@ import { myProvider } from '@/lib/ai/providers';
 import { generateEmbeddings } from '@/lib/ai/utils';
 import { getPineconeIndex, queryPineconeWithDiagnostics } from '@/lib/pinecone-client';
 
-export const maxDuration = 60;
+// Extended timeout for development purposes to prevent premature timeouts
+export const maxDuration = 300; // 5 minutes instead of 60 seconds
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   // Start timing the entire POST handler
   console.time('total_request_duration');
   console.log("=== API route POST handler started ===");
+  const requestStartTime = Date.now();
   
   try {
     console.log("API route POST handler invoked");
@@ -113,6 +115,10 @@ export async function POST(request: Request) {
       ],
     });
     console.timeEnd('save_user_message');
+    
+    // Log milestone timing
+    const milestone1Time = Date.now() - requestStartTime;
+    console.log(`Milestone: Pre-processing completed in ${milestone1Time}ms`);
 
     let contextText = '';
     if (userMessage.parts[0] && 'text' in userMessage.parts[0] && userMessage.parts[0].text) {
@@ -203,6 +209,10 @@ export async function POST(request: Request) {
         console.log('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
       }
     }
+    
+    // Log milestone timing
+    const milestone2Time = Date.now() - requestStartTime;
+    console.log(`Milestone: Document context retrieval completed in ${milestone2Time}ms`);
 
     console.time('prepare_prompt');
     let enhancedSystemPrompt = systemPrompt({ selectedChatModel });
@@ -223,6 +233,9 @@ Use the above context information to answer the user's question if relevant. Whe
     const response = createDataStreamResponse({
       execute: (dataStream) => {
         console.log("Streaming text from AI model");
+        console.time('ai_model_streaming');
+        const streamingStartTime = Date.now();
+        
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: enhancedSystemPrompt,
@@ -248,8 +261,10 @@ Use the above context information to answer the user's question if relevant. Whe
             tavilySearch,
           },
           onFinish: async ({ response }) => {
+            const streamingDuration = Date.now() - streamingStartTime;
+            console.timeEnd('ai_model_streaming');
             console.timeEnd('stream_text_call');
-            console.log("Stream text call completed");
+            console.log(`AI model streaming completed in ${streamingDuration}ms`);
             
             if (session.user?.id) {
               try {
@@ -289,8 +304,9 @@ Use the above context information to answer the user's question if relevant. Whe
               }
             }
             
+            const totalDuration = Date.now() - requestStartTime;
             console.timeEnd('total_request_duration');
-            console.log("=== API route POST handler completed successfully ===");
+            console.log(`=== API route POST handler completed successfully in ${totalDuration}ms ===`);
           },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,
@@ -307,19 +323,21 @@ Use the above context information to answer the user's question if relevant. Whe
       onError: (error) => {
         console.error('Error in data stream:', error);
         console.log('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
+        const totalDuration = Date.now() - requestStartTime;
         console.timeEnd('stream_text_call');
         console.timeEnd('total_request_duration');
-        console.log("=== API route POST handler failed with error ===");
+        console.log(`=== API route POST handler failed with error after ${totalDuration}ms ===`);
         return 'Oops, an error occurred while processing your request. Please try again.';
       },
     });
     
     return response;
   } catch (error) {
+    const totalDuration = Date.now() - requestStartTime;
     console.error('Unhandled error in POST handler:', error);
     console.log('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
     console.timeEnd('total_request_duration');
-    console.log("=== API route POST handler failed with unhandled error ===");
+    console.log(`=== API route POST handler failed with unhandled error after ${totalDuration}ms ===`);
     return new Response('Internal Server Error', { status: 500 });
   }
 }
