@@ -27,14 +27,19 @@ import { tavilySearch } from '@/lib/ai/tools/tavily-search';
 import { isProductionEnvironment } from '@/lib/constants';
 import { myProvider } from '@/lib/ai/providers';
 import { generateEmbeddings } from '@/lib/ai/utils';
-import { getPineconeIndex } from '@/lib/pinecone-client';
+import { getPineconeIndex, queryPineconeWithDiagnostics } from '@/lib/pinecone-client';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
+  // Start timing the entire POST handler
+  console.time('total_request_duration');
+  console.log("=== API route POST handler started ===");
+  
   try {
     console.log("API route POST handler invoked");
+    console.time('parse_request');
     const {
       id,
       messages,
@@ -44,13 +49,17 @@ export async function POST(request: Request) {
       messages: Array<UIMessage>;
       selectedChatModel: string;
     } = await request.json();
+    console.timeEnd('parse_request');
 
     console.log("Request parsed: ", { id, messageCount: messages.length, selectedChatModel });
 
+    console.time('authenticate_user');
     const session = await auth();
+    console.timeEnd('authenticate_user');
 
     if (!session || !session.user || !session.user.id) {
       console.log("Authentication failed: User not authenticated");
+      console.timeEnd('total_request_duration');
       return new Response('Unauthorized', { status: 401 });
     }
 
@@ -60,28 +69,37 @@ export async function POST(request: Request) {
 
     if (!userMessage) {
       console.log("No user message found in the request");
+      console.timeEnd('total_request_duration');
       return new Response('No user message found', { status: 400 });
     }
 
     console.log("User message found", userMessage.id);
 
+    console.time('get_chat_data');
     const chat = await getChatById({ id });
+    console.timeEnd('get_chat_data');
 
     if (!chat) {
       console.log("Chat not found, creating new chat");
+      console.time('generate_chat_title');
       const title = await generateTitleFromUserMessage({
         message: userMessage,
       });
+      console.timeEnd('generate_chat_title');
 
+      console.time('save_new_chat');
       await saveChat({ id, userId: session.user.id, title });
+      console.timeEnd('save_new_chat');
     } else {
       if (chat.userId !== session.user.id) {
         console.log("User not authorized to access this chat");
+        console.timeEnd('total_request_duration');
         return new Response('Unauthorized', { status: 401 });
       }
     }
 
     console.log("Saving user message to database");
+    console.time('save_user_message');
     await saveMessages({
       messages: [
         {
@@ -94,6 +112,7 @@ export async function POST(request: Request) {
         },
       ],
     });
+    console.timeEnd('save_user_message');
 
     let contextText = '';
     if (userMessage.parts[0] && 'text' in userMessage.parts[0] && userMessage.parts[0].text) {
@@ -101,39 +120,94 @@ export async function POST(request: Request) {
         const userQuery = userMessage.parts[0].text;
         console.log("Retrieving relevant document context for:", userQuery.substring(0, 100) + '...');
         
+        // Time the embedding generation
+        console.time('embedding_generation');
+        console.log(`Starting embedding generation for query (${userQuery.length} chars)`);
         const embedding = await generateEmbeddings(userQuery);
+        console.timeEnd('embedding_generation');
+        console.log(`Embedding generation complete, vector length: ${embedding.length}`);
         
-        const index = getPineconeIndex();
-        const queryResults = await index.query({
-          vector: embedding,
-          topK: 5,
-          filter: { userId: session.user.id },
-          includeMetadata: true,
-        });
-        
-        if (queryResults.matches && Array.isArray(queryResults.matches) && queryResults.matches.length > 0) {
-          contextText = queryResults.matches
-            .map(match => {
-              const text = match.metadata?.text || '';
-              const source = match.metadata?.source || 'Unknown document';
-              const score = match.score ? Math.round(match.score * 100) / 100 : 0;
-              return `[SOURCE: ${source}] (relevance: ${score})\n${text}`;
-            })
-            .filter(text => text.length > 0)
-            .join('\n\n');
+        // Use enhanced Pinecone diagnostic query
+        console.log("Using enhanced Pinecone diagnostics");
+        try {
+          // Use the enhanced diagnostic query function instead of direct index query
+          const INDEX_NAME = process.env.PINECONE_INDEX_NAME;
+          if (!INDEX_NAME) {
+            throw new Error('PINECONE_INDEX_NAME environment variable is not defined');
+          }
           
-          console.log('Found relevant context:', contextText.substring(0, 100) + '...');
-          console.log(`Retrieved ${queryResults.matches.length} relevant chunks from documents`);
-        } else {
-          console.log('No relevant context found in user documents');
+          console.log(`Querying Pinecone with INDEX_NAME: ${INDEX_NAME}, userId filter: ${session.user.id}`);
+          const queryResults = await queryPineconeWithDiagnostics(
+            INDEX_NAME,
+            embedding,
+            5,
+            { userId: session.user.id }
+          );
+          
+          if (queryResults.matches && Array.isArray(queryResults.matches) && queryResults.matches.length > 0) {
+            console.time('process_query_results');
+            contextText = queryResults.matches
+              .map(match => {
+                const text = match.metadata?.text || '';
+                const source = match.metadata?.source || 'Unknown document';
+                const score = match.score ? Math.round(match.score * 100) / 100 : 0;
+                return `[SOURCE: ${source}] (relevance: ${score})\n${text}`;
+              })
+              .filter(text => text.length > 0)
+              .join('\n\n');
+            console.timeEnd('process_query_results');
+            
+            console.log(`Found relevant context (${contextText.length} characters)`);
+            console.log(`Retrieved ${queryResults.matches.length} relevant chunks from documents`);
+          } else {
+            console.log('No relevant context found in user documents');
+          }
+        } catch (pineconeError) {
+          console.error('Error in Pinecone query operation:', pineconeError);
+          console.log('Stack trace:', pineconeError instanceof Error ? pineconeError.stack : 'No stack trace available');
+          
+          // Fallback to direct index query if diagnostic version fails
+          console.log('Attempting fallback to direct Pinecone query');
+          console.time('pinecone_direct_query');
+          try {
+            const index = getPineconeIndex();
+            const queryResults = await index.query({
+              vector: embedding,
+              topK: 5,
+              filter: { userId: session.user.id },
+              includeMetadata: true,
+            });
+            console.timeEnd('pinecone_direct_query');
+            
+            if (queryResults.matches && Array.isArray(queryResults.matches) && queryResults.matches.length > 0) {
+              contextText = queryResults.matches
+                .map(match => {
+                  const text = match.metadata?.text || '';
+                  const source = match.metadata?.source || 'Unknown document';
+                  const score = match.score ? Math.round(match.score * 100) / 100 : 0;
+                  return `[SOURCE: ${source}] (relevance: ${score})\n${text}`;
+                })
+                .filter(text => text.length > 0)
+                .join('\n\n');
+              
+              console.log(`Fallback query successful: Found relevant context (${contextText.length} characters)`);
+            } else {
+              console.log('Fallback query: No relevant context found in user documents');
+            }
+          } catch (fallbackError) {
+            console.error('Even fallback Pinecone query failed:', fallbackError);
+          }
         }
       } catch (error) {
         console.error('Error retrieving RAG context:', error);
+        console.log('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
       }
     }
 
+    console.time('prepare_prompt');
     let enhancedSystemPrompt = systemPrompt({ selectedChatModel });
     if (contextText) {
+      console.log(`Context length: ${contextText.length} characters`);
       enhancedSystemPrompt = `${enhancedSystemPrompt}
 
 RELEVANT DOCUMENT CONTEXT:
@@ -141,9 +215,12 @@ ${contextText}
 
 Use the above context information to answer the user's question if relevant. When using information from the context, mention the source document (e.g., "According to [SOURCE NAME]"). If the context doesn't contain information relevant to the user's query, rely on your general knowledge or web search.`;
     }
+    console.timeEnd('prepare_prompt');
 
     console.log("Creating data stream response with model:", selectedChatModel);
-    return createDataStreamResponse({
+    console.time('stream_text_call');
+    
+    const response = createDataStreamResponse({
       execute: (dataStream) => {
         console.log("Streaming text from AI model");
         const result = streamText({
@@ -171,8 +248,12 @@ Use the above context information to answer the user's question if relevant. Whe
             tavilySearch,
           },
           onFinish: async ({ response }) => {
+            console.timeEnd('stream_text_call');
+            console.log("Stream text call completed");
+            
             if (session.user?.id) {
               try {
+                console.time('save_assistant_message');
                 const assistantId = getTrailingMessageId({
                   messages: response.messages.filter(
                     (message) => message.role === 'assistant',
@@ -201,10 +282,15 @@ Use the above context information to answer the user's question if relevant. Whe
                     },
                   ],
                 });
+                console.timeEnd('save_assistant_message');
+                console.log("Assistant message saved to database");
               } catch (error) {
                 console.error('Failed to save chat', error);
               }
             }
+            
+            console.timeEnd('total_request_duration');
+            console.log("=== API route POST handler completed successfully ===");
           },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,
@@ -220,15 +306,21 @@ Use the above context information to answer the user's question if relevant. Whe
       },
       onError: (error) => {
         console.error('Error in data stream:', error);
+        console.log('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
+        console.timeEnd('stream_text_call');
+        console.timeEnd('total_request_duration');
+        console.log("=== API route POST handler failed with error ===");
         return 'Oops, an error occurred while processing your request. Please try again.';
       },
     });
+    
+    return response;
   } catch (error) {
-    console.error('Unhandled error in API route:', error);
-    return new Response(
-      `An error occurred while processing your request: ${error instanceof Error ? error.message : String(error)}`,
-      { status: 500 }
-    );
+    console.error('Unhandled error in POST handler:', error);
+    console.log('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
+    console.timeEnd('total_request_duration');
+    console.log("=== API route POST handler failed with unhandled error ===");
+    return new Response('Internal Server Error', { status: 500 });
   }
 }
 
@@ -249,16 +341,19 @@ export async function DELETE(request: Request) {
   try {
     const chat = await getChatById({ id });
 
+    if (!chat) {
+      return new Response('Not Found', { status: 404 });
+    }
+
     if (chat.userId !== session.user.id) {
       return new Response('Unauthorized', { status: 401 });
     }
 
     await deleteChatById({ id });
 
-    return new Response('Chat deleted', { status: 200 });
+    return new Response(null, { status: 204 });
   } catch (error) {
-    return new Response('An error occurred while processing your request!', {
-      status: 500,
-    });
+    console.error('Failed to delete chat', error);
+    return new Response('Internal Server Error', { status: 500 });
   }
 }

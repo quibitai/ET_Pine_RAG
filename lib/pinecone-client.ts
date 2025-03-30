@@ -42,11 +42,81 @@ try {
 // Export the initialized instance
 export const pineconeClient = pineconeInstance;
 
-// --- Helper Function ---
+// --- Helper Function with Enhanced Logging ---
 export const getPineconeIndex = () => {
   // Re-check index name here just in case, though checked above
   if (!INDEX_NAME) {
      throw new Error('PINECONE_INDEX_NAME is missing, cannot get index.');
   }
+  console.log(`Getting Pinecone index: ${INDEX_NAME}`);
   return pineconeClient.index(INDEX_NAME);
-}; 
+};
+
+/**
+ * Enhanced query function with timing and error logging
+ * This wrapper adds detailed diagnostics around Pinecone operations
+ */
+export async function queryPineconeWithDiagnostics(
+  indexName: string,
+  queryVector: number[],
+  topK: number = 5,
+  filter?: Record<string, any>
+) {
+  if (!indexName) {
+    throw new Error('Index name is required');
+  }
+
+  if (!queryVector || !queryVector.length) {
+    throw new Error('Query vector is required and must not be empty');
+  }
+
+  console.time('pinecone_query_total');
+  console.log(`=== Starting Pinecone query (index: ${indexName}) ===`);
+  console.log(`Query parameters: topK=${topK}, filter=${filter ? JSON.stringify(filter) : 'none'}`);
+  console.log(`Vector dimensions: ${queryVector.length}`);
+
+  try {
+    const index = pineconeClient.index(indexName);
+    
+    console.time('pinecone_api_call');
+    const queryResponse = await index.query({
+      vector: queryVector,
+      topK,
+      filter,
+      includeMetadata: true,
+    });
+    console.timeEnd('pinecone_api_call');
+    
+    const matchCount = queryResponse.matches?.length || 0;
+    console.log(`Query successful. Found ${matchCount} matches.`);
+    
+    // Log match scores if available (helpful for relevance debugging)
+    if (queryResponse.matches && queryResponse.matches.length > 0) {
+      console.log('Match scores:');
+      queryResponse.matches.forEach((match, i) => {
+        console.log(`  Match ${i+1}: score=${match.score}, id=${match.id}`);
+      });
+    }
+    
+    console.timeEnd('pinecone_query_total');
+    console.log('=== Pinecone query completed successfully ===');
+    
+    return queryResponse;
+  } catch (error) {
+    console.timeEnd('pinecone_api_call');
+    console.error('Error querying Pinecone:', error);
+    
+    // Enhanced error details
+    const errorDetails = error instanceof Error ? {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+    } : 'Unknown error format';
+    
+    console.error('Error details:', JSON.stringify(errorDetails, null, 2));
+    console.timeEnd('pinecone_query_total');
+    console.log('=== Pinecone query failed ===');
+    
+    throw error;
+  }
+} 
