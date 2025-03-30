@@ -1,5 +1,3 @@
-'use server';
-
 import { Pinecone } from '@pinecone-database/pinecone';
 
 const INDEX_NAME = process.env.PINECONE_INDEX_NAME;
