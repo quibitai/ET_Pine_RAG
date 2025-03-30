@@ -25,6 +25,52 @@ if (!INDEX_NAME) {
 // You can keep or remove the other checks/warnings for INDEX_HOST/ENVIRONMENT
 // as they won't affect the constructor call directly in this approach.
 
+// Configuration constants for timeouts and retries
+const CONFIG = {
+  MAX_RETRY_ATTEMPTS: 3,
+  CONNECTION_TIMEOUT_MS: 15000, // 15 seconds
+  OPERATION_TIMEOUT_MS: 25000,  // 25 seconds
+  RETRY_DELAY_MS: 1000,         // Initial delay between retries (1 second)
+};
+
+// --- Helper function for exponential backoff retry logic ---
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  options?: { 
+    maxRetries?: number,
+    initialDelay?: number,
+    operationName?: string 
+  }
+): Promise<T> {
+  const maxRetries = options?.maxRetries ?? CONFIG.MAX_RETRY_ATTEMPTS;
+  const initialDelay = options?.initialDelay ?? CONFIG.RETRY_DELAY_MS;
+  const operationName = options?.operationName ?? 'Pinecone operation';
+  
+  let lastError: Error | undefined;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 1) {
+        console.log(`Retry attempt ${attempt}/${maxRetries} for ${operationName}...`);
+      }
+      return await operation();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      if (attempt < maxRetries) {
+        // Calculate exponential backoff with jitter
+        const delay = initialDelay * Math.pow(2, attempt - 1) * (0.5 + Math.random() * 0.5);
+        console.log(`${operationName} failed (attempt ${attempt}/${maxRetries}). Retrying in ${Math.round(delay)}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error(`${operationName} failed after ${maxRetries} attempts.`);
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
 // --- Initialize Client (Minimal Config) ---
 console.log('Initializing Pinecone client with: apiKey only (minimal config)');
 let pineconeInstance: Pinecone;
@@ -32,6 +78,8 @@ try {
   // Initialize with ONLY the apiKey
   pineconeInstance = new Pinecone({
     apiKey: API_KEY,
+    // Fetch options removed due to type compatibility issues
+    // We'll use controller.signal directly in the query method instead
   });
 } catch (e) {
    console.error("Error during Pinecone client minimal initialization:", e);
@@ -53,7 +101,7 @@ export const getPineconeIndex = () => {
 };
 
 /**
- * Enhanced query function with timing and error logging
+ * Enhanced query function with timing, error logging, and retry logic
  * This wrapper adds detailed diagnostics around Pinecone operations
  */
 export async function queryPineconeWithDiagnostics(
@@ -78,13 +126,34 @@ export async function queryPineconeWithDiagnostics(
   try {
     const index = pineconeClient.index(indexName);
     
+    // Use retry logic for the query operation
     console.time('pinecone_api_call');
-    const queryResponse = await index.query({
-      vector: queryVector,
-      topK,
-      filter,
-      includeMetadata: true,
-    });
+    const queryResponse = await withRetry(
+      async () => {
+        // Create timeout to abort if operation takes too long
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`Pinecone query timed out after ${CONFIG.OPERATION_TIMEOUT_MS}ms`));
+          }, CONFIG.OPERATION_TIMEOUT_MS);
+        });
+
+        // Actual query operation
+        const queryPromise = index.query({
+          vector: queryVector,
+          topK,
+          filter,
+          includeMetadata: true,
+        });
+        
+        // Race between timeout and query
+        return await Promise.race([
+          queryPromise,
+          timeoutPromise
+        ]) as Awaited<typeof queryPromise>;
+      },
+      { operationName: 'Pinecone query' }
+    );
+    
     console.timeEnd('pinecone_api_call');
     
     const matchCount = queryResponse.matches?.length || 0;
