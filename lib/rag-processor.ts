@@ -253,6 +253,7 @@ export async function processFileForRag({
       const chunk = textChunks[i];
       const chunkIndex = i + 1;
       console.log(`\n[RAG Processor] === Starting chunk ${chunkIndex}/${textChunks.length} ===`);
+      console.log(`[RAG Processor] Current chunk size: ${chunk.length} characters`);
       console.time(`chunk_${chunkIndex}_total`);
       
       // Generate embeddings for the chunk - wrap in try/catch
@@ -284,6 +285,10 @@ export async function processFileForRag({
         totalChunksProcessed++;
         console.timeEnd(`chunk_${chunkIndex}_total`);
         console.log(`[RAG Processor] ❌ Chunk ${chunkIndex} failed at embedding generation`);
+        console.log(`[RAG Processor] Continuing loop after embedding error for chunk ${chunkIndex}`);
+        if (i + 1 < textChunks.length) {
+          console.log(`[RAG Processor] Moving to process chunk ${i + 2}/${textChunks.length}`);
+        }
         // Continue to the next chunk for now
         continue;
       }
@@ -292,6 +297,9 @@ export async function processFileForRag({
       if (!embedding) {
         console.warn(`[RAG Processor] ⚠️ Skipping upsert for chunk ${chunkIndex} due to missing embedding.`);
         console.timeEnd(`chunk_${chunkIndex}_total`);
+        if (i + 1 < textChunks.length) {
+          console.log(`[RAG Processor] Moving to process chunk ${i + 2}/${textChunks.length}`);
+        }
         continue;
       }
       
@@ -318,12 +326,14 @@ export async function processFileForRag({
         const totalBatches = Math.ceil(textChunks.length / batchSize);
         
         console.log(`\n[RAG Processor] === Processing batch ${batchNumber}/${totalBatches} ===`);
+        console.log(`[RAG Processor] Preparing to upsert batch for chunks up to index ${i}. Batch size: ${vectors.length}`);
         console.time(`batch_${batchNumber}_total`);
         
         // Add a small delay between batches to avoid overwhelming the API
         if (i > 0 && vectors.length > 0) {
           console.log(`[RAG Processor] Adding delay of ${batchDelay}ms before processing batch ${batchNumber}...`);
           await new Promise(resolve => setTimeout(resolve, batchDelay));
+          console.log(`[RAG Processor] Delay completed, proceeding with batch ${batchNumber}`);
         }
         
         const indexNameToLog = process.env.PINECONE_INDEX_NAME || 'undefined_index';
@@ -348,11 +358,11 @@ export async function processFileForRag({
             }
             
             // Perform the upsert operation
-            console.log(`[RAG Processor] Executing Pinecone upsert for batch ${batchNumber} (Attempt ${upsertRetryCount + 1}/${maxUpsertRetries})`);
+            console.log(`[RAG Processor] Calling index.upsert now for batch ${batchNumber} (Attempt ${upsertRetryCount + 1}/${maxUpsertRetries})...`);
             await index.upsert(vectors);
             
             console.timeEnd(`pinecone_upsert_batch_${batchNumber}`);
-            console.log(`[RAG Processor] ✅ Batch ${batchNumber}/${totalBatches} upsert successful (${currentBatchSize} vectors)`);
+            console.log(`[RAG Processor] ✅ Successfully upserted batch ${batchNumber} ending at chunk index ${i}`);
             upsertSucceeded = true;
             
             // Verify upsert with a quick query
@@ -400,6 +410,7 @@ export async function processFileForRag({
               const retryDelay = 1000 * upsertRetryCount; // Exponential backoff
               console.log(`[RAG Processor] Retrying batch ${batchNumber} after ${retryDelay}ms delay...`);
               await new Promise(resolve => setTimeout(resolve, retryDelay));
+              console.log(`[RAG Processor] Retry delay completed for batch ${batchNumber}`);
             } else {
               // All retries failed
               failedUpsertBatches++;
@@ -411,6 +422,10 @@ export async function processFileForRag({
         console.timeEnd(`batch_${batchNumber}_total`);
         console.log(`[RAG Processor] === Completed batch ${batchNumber}/${totalBatches} ===\n`);
         vectors.length = 0; // Clear the array regardless of success/fail
+        
+        if (i + 1 < textChunks.length) {
+          console.log(`[RAG Processor] Moving to process chunk ${i + 2}/${textChunks.length}`);
+        }
       }
       
       console.timeEnd(`chunk_${chunkIndex}_total`);
