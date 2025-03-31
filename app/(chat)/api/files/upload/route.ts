@@ -10,6 +10,14 @@ const qstashClient = new Client({
   token: process.env.QSTASH_TOKEN!
 });
 
+// Helper function to ensure complete URL
+function ensureCompleteUrl(url: string): string {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return `https://${url}`;
+  }
+  return url;
+}
+
 // Supported document types for RAG processing
 const documentTypes = [
   'application/pdf',
@@ -74,12 +82,12 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // If document type is supported, enqueue RAG processing
     if (documentTypes.includes(file.type)) {
-      const workerUrl = process.env.QSTASH_WORKER_URL;
+      const rawWorkerUrl = process.env.QSTASH_WORKER_URL;
 
-      // Log the URL being used BEFORE attempting to publish
-      console.log(`[Upload API] Worker URL from env: ${workerUrl || 'Not Set!'}`);
+      // Log the raw URL being used
+      console.log(`[Upload API] Raw Worker URL from env: ${rawWorkerUrl || 'Not Set!'}`);
 
-      if (!workerUrl) {
+      if (!rawWorkerUrl) {
         console.error("[Upload API] QSTASH_WORKER_URL environment variable is not set! Cannot enqueue job.");
         // Update status to failed immediately if URL is missing
         await updateFileRagStatus({
@@ -95,16 +103,20 @@ export async function POST(request: Request): Promise<NextResponse> {
         });
       }
 
+      // Ensure complete URL with protocol
+      const workerUrl = ensureCompleteUrl(rawWorkerUrl);
+      console.log(`[Upload API] Complete Worker URL: ${workerUrl}`);
+
       console.log(`[Upload API] Enqueuing RAG job for document ${documentId} to worker URL: ${workerUrl}`);
       try {
         // Await the publish call and capture the result
         const publishResult = await qstashClient.publishJSON({
-          url: workerUrl, // Use the verified absolute URL
+          url: workerUrl,
           body: {
             documentId,
             userId,
           },
-          retries: 3, // Keep retries configured
+          retries: 3,
         });
 
         // Log the raw result object from QStash publish
