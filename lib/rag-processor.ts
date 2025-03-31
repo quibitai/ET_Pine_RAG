@@ -1,17 +1,15 @@
 import { getPineconeIndex } from './pinecone-client';
 import { generateEmbeddings } from './ai/utils';
 import { updateFileRagStatus, getDocumentById } from './db/queries';
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
-import mammoth from 'mammoth';
 import { createWriteStream, createReadStream } from 'fs';
-import { unlink, readFile } from 'fs/promises';
+import { unlink } from 'fs/promises';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { promisify } from 'util';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
-import type { RecordMetadata, ScoredPineconeRecord } from '@pinecone-database/pinecone';
+import type { PineconeRecord, RecordMetadata } from '@pinecone-database/pinecone';
 
 const unlinkAsync = promisify(unlink);
 
@@ -157,6 +155,68 @@ async function extractTextFromDOCX(buffer: Buffer): Promise<string> {
   }
 }
 
+// --- NEW: Interface for Unstructured API Response ---
+interface UnstructuredElement {
+  type: string;
+  text: string;
+  metadata: {
+    filename?: string;
+    page_number?: number;
+  };
+}
+
+// --- NEW: Function to call Unstructured API ---
+async function extractTextWithUnstructured(
+  fileUrl: string,
+  apiKey: string
+): Promise<{ elements: UnstructuredElement[]; fullText: string }> {
+  console.log(`[Unstructured] Starting extraction for URL: ${fileUrl.split('?')[0]}`);
+  const apiUrl = "https://api.unstructured.io/general/v0/general";
+
+  const requestData = {
+    url: fileUrl,
+    strategy: "auto",
+    pdf_infer_table_structure: "true",
+  };
+
+  try {
+    console.time('unstructured_api_call');
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "Content-Type": "application/json",
+        "unstructured-api-key": apiKey,
+      },
+      body: JSON.stringify(requestData),
+    });
+    console.timeEnd('unstructured_api_call');
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`[Unstructured] API Error ${response.status}: ${errorBody}`);
+      throw new Error(`Unstructured API failed with status ${response.status}: ${errorBody}`);
+    }
+
+    const elements: UnstructuredElement[] = await response.json();
+    console.log(`[Unstructured] Successfully processed. Received ${elements.length} elements.`);
+
+    if (!Array.isArray(elements)) {
+      console.error("[Unstructured] API response was not an array:", elements);
+      throw new Error("Invalid response format from Unstructured API");
+    }
+
+    const fullText = elements.map(el => el.text || '').join('\n\n');
+    console.log(`[Unstructured] Total extracted text length: ${fullText.length}`);
+
+    return { elements, fullText };
+
+  } catch (error) {
+    console.error("[Unstructured] Failed to process document:", error);
+    throw error;
+  }
+}
+
 /**
  * Processes a document for RAG
  * @param documentId ID of the document to process
@@ -180,264 +240,154 @@ export async function processFileForRag({
   
   let docDetails;
   let tempFilePath: string | null = null;
+  let allUpsertsSucceeded = true;
+  let firstErrorMessage: string | undefined;
+  let totalChunksProcessed = 0;
+  let successfullyUpsertedChunks = 0;
+  let failedUpsertBatches = 0;
+
   try {
-    // Update status to processing as the first step
-    await updateFileRagStatus({
-      id: documentId,
-      processingStatus: 'processing',
-      statusMessage: 'Starting document processing'
-    });
-    console.log(`[RAG Processor] Updated status to 'processing' for ${documentId}`);
+    // Validate Unstructured API Key
+    const unstructuredApiKey = process.env.UNSTRUCTURED_API_KEY;
+    if (!unstructuredApiKey) {
+      throw new Error('UNSTRUCTURED_API_KEY environment variable is not set');
+    }
 
     // Get document details
+    console.log(`[RAG Processor] Fetching document details for ${documentId}`);
     docDetails = await getDocumentById({ id: documentId });
     if (!docDetails) {
-      throw new Error('Document not found');
+      throw new Error(`Document not found: ${documentId}`);
     }
     console.log(`[RAG Processor] Successfully fetched details for ID: ${documentId}. FileName: ${docDetails?.fileName}`);
 
     const { fileName: documentName, fileType: docType } = docDetails;
 
-    // Download file using streaming
-    console.log(`[RAG Processor] Starting streaming download for ${documentId}`);
-    tempFilePath = await downloadFileStream(fileUrl);
-    console.log(`[RAG Processor] File downloaded to temporary location: ${tempFilePath}`);
-
-    // Extract text based on file type
-    console.log(`[RAG Processor] Preparing to extract text (${fileType}) for ${documentId}`);
-    let extractedText = '';
-
-    if (fileType === 'application/pdf') {
-      extractedText = await extractTextFromPDF(tempFilePath);
-    } else if (fileType === 'text/plain' || fileType === 'text/markdown' || fileType === 'application/x-markdown') {
-      extractedText = await new Promise((resolve, reject) => {
-        let text = '';
-        const readStream = createReadStream(tempFilePath!, { encoding: 'utf8' });
-        readStream.on('data', chunk => { text += chunk; });
-        readStream.on('end', () => resolve(text));
-        readStream.on('error', reject);
+    // Update status to processing
+    console.log(`[RAG Processor] Updating status to 'processing' for ${documentId}`);
+    try {
+      await updateFileRagStatus({
+        id: documentId,
+        processingStatus: 'processing',
+        statusMessage: 'Starting document processing'
       });
-    } else {
-      throw new Error(`Unsupported file type: ${fileType}`);
+      console.log(`[RAG Processor] ✅ Successfully updated status to 'processing'`);
+    } catch (statusError) {
+      console.error(`[RAG Processor] ❌ Failed to update status to 'processing':`, statusError);
+      throw statusError;
     }
 
-    console.log(`[RAG Processor] Text extraction completed for ${documentId}. Length: ${extractedText?.length}`);
-
-    // Skip if no meaningful text was extracted
-    if (!extractedText || extractedText.trim().length === 0) {
-      console.warn('No text extracted from document, or text is empty after trimming');
-      throw new Error('No meaningful text extracted from document');
+    // Get file URL
+    const fileUrlToUse = fileUrl || docDetails.fileUrl;
+    if (!fileUrlToUse) {
+      throw new Error('Document has no associated file URL');
     }
-    
-    console.log(`Extracted ${extractedText.length} characters from document`);
-    
-    // Chunk the text
-    const textChunks = chunkText(extractedText);
-    console.log(`Split text into ${textChunks.length} chunks`);
-    
-    // Add pre-index log
-    console.log('[RAG Processor] Attempting to get Pinecone index object...');
-    
-    // Get Pinecone index
-    const index = getPineconeIndex();
-    
-    // Process chunks and upload to Pinecone
-    const vectors = [];
-    const batchSize = 5; // Reduced from 10 to 5 to avoid overwhelming the API
-    const batchDelay = 1000; // 1 second delay between batches
 
-    // Add tracking for partial failures
-    let allUpsertsSucceeded = true;
-    let firstErrorMessage = '';
-    let totalChunksProcessed = 0;
-    let successfullyUpsertedChunks = 0;
-    let failedUpsertBatches = 0;
+    // Extract text using Unstructured API
+    console.log(`[RAG Processor] Sending URL to Unstructured API for ${documentId}`);
+    const { elements, fullText } = await extractTextWithUnstructured(fileUrlToUse, unstructuredApiKey);
+    console.log(`[RAG Processor] Text extraction via Unstructured completed for ${documentId}`);
 
-    // Before the loop starts, add overall timing
-    console.time('total_rag_processing');
-    console.log(`[RAG Processor] Starting to process ${textChunks.length} chunks in batches of ${batchSize}`);
+    // Process text chunks
+    console.log("[RAG Processor] Using local chunkText function.");
+    if (!fullText || fullText.trim().length === 0) {
+      throw new Error('No meaningful text extracted from document via Unstructured.');
+    }
+    const textChunks = chunkText(fullText);
+    console.log(`[RAG Processor] Prepared ${textChunks.length} chunks for embedding.`);
 
-    for (let i = 0; i < textChunks.length; i++) {
-      const chunk = textChunks[i];
-      const chunkIndex = i + 1;
-      console.log(`\n[RAG Processor] === Starting chunk ${chunkIndex}/${textChunks.length} ===`);
-      console.log(`[RAG Processor] Current chunk size: ${chunk.length} characters`);
-      console.time(`chunk_${chunkIndex}_total`);
+    // Initialize Pinecone
+    const index = await getPineconeIndex();
+    
+    // Process chunks in batches
+    const batchSize = 5; // Reduced batch size to prevent rate limiting
+    const batches = [];
+    for (let i = 0; i < textChunks.length; i += batchSize) {
+      batches.push(textChunks.slice(i, i + batchSize));
+    }
+    console.log(`[RAG Processor] Processing ${batches.length} batches of up to ${batchSize} chunks each`);
+
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const vectors = [];
       
-      // Generate embeddings for the chunk - wrap in try/catch
-      let embedding;
-      try {
-        console.log(`[RAG Processor] Generating embedding for chunk ${chunkIndex}/${textChunks.length} (${chunk.length} characters)`);
-        console.time(`embedding_generation_chunk_${chunkIndex}`);
-        embedding = await generateEmbeddings(chunk);
-        console.timeEnd(`embedding_generation_chunk_${chunkIndex}`);
-        console.log(`[RAG Processor] ✅ Embedding generated for chunk ${chunkIndex}. Dimensions: ${embedding?.length}`);
-        totalChunksProcessed++;
-      } catch (embeddingError) {
-        console.timeEnd(`embedding_generation_chunk_${chunkIndex}`);
-        console.error(`[RAG Processor] ❌ Error generating embedding for chunk ${chunkIndex}/${textChunks.length}:`, embeddingError);
-        // Log details about the error
-        if (embeddingError instanceof Error) {
-          console.error(`[RAG Processor] Embedding Error Details for chunk ${chunkIndex}:
-            Name: ${embeddingError.name}
-            Message: ${embeddingError.message}
-            Stack: ${embeddingError.stack}`);
+      console.log(`[RAG Processor] Processing batch ${batchIndex + 1}/${batches.length}`);
+      
+      // Generate embeddings for batch
+      for (let i = 0; i < batch.length; i++) {
+        const chunkIndex = batchIndex * batchSize + i;
+        const chunk = batch[i];
+        
+        console.log(`[RAG Processor] Generating embedding for chunk ${chunkIndex + 1}/${textChunks.length}`);
+        console.time(`chunk_${chunkIndex}_embedding`);
+        const embedding = await generateEmbeddings(chunk);
+        console.timeEnd(`chunk_${chunkIndex}_embedding`);
+        
+        if (embedding) {
+          const vectorId = `${documentId}_chunk_${chunkIndex + 1}`;
+          const metadata = {
+            text: chunk,
+            documentId,
+            chunkIndex: chunkIndex + 1,
+            totalChunks: textChunks.length,
+            source: documentName || 'unknown',
+            timestamp: new Date().toISOString(),
+          };
           
-          // If this is the first error, store it
-          if (!firstErrorMessage) {
-            firstErrorMessage = `Embedding error in chunk ${chunkIndex}: ${embeddingError.message}`;
-          }
+          vectors.push({
+            id: vectorId,
+            values: embedding,
+            metadata,
+          });
+          
+          console.log(`[RAG Processor] ✅ Successfully generated embedding for chunk ${chunkIndex + 1}`);
+        } else {
+          console.error(`[RAG Processor] ❌ Failed to generate embedding for chunk ${chunkIndex + 1}`);
+          allUpsertsSucceeded = false;
+          firstErrorMessage = firstErrorMessage || `Failed to generate embedding for chunk ${chunkIndex + 1}`;
         }
-        // Mark as overall failure
-        allUpsertsSucceeded = false;
+        
         totalChunksProcessed++;
-        console.timeEnd(`chunk_${chunkIndex}_total`);
-        console.log(`[RAG Processor] ❌ Chunk ${chunkIndex} failed at embedding generation`);
-        console.log(`[RAG Processor] Continuing loop after embedding error for chunk ${chunkIndex}`);
-        if (i + 1 < textChunks.length) {
-          console.log(`[RAG Processor] Moving to process chunk ${i + 2}/${textChunks.length}`);
-        }
-        // Continue to the next chunk for now
-        continue;
       }
       
-      // Ensure embedding is valid before proceeding
-      if (!embedding) {
-        console.warn(`[RAG Processor] ⚠️ Skipping upsert for chunk ${chunkIndex} due to missing embedding.`);
-        console.timeEnd(`chunk_${chunkIndex}_total`);
-        if (i + 1 < textChunks.length) {
-          console.log(`[RAG Processor] Moving to process chunk ${i + 2}/${textChunks.length}`);
-        }
-        continue;
-      }
-      
-      // Prepare the vector
-      console.log(`[RAG Processor] Preparing vector for chunk ${chunkIndex}`);
-      vectors.push({
-        id: `${documentId}_chunk_${chunkIndex}`,
-        values: embedding,
-        metadata: {
-          documentId,
-          userId,
-          chunkIndex: i,
-          text: chunk,
-          source: documentName || 'unknown',
-          timestamp: new Date().toISOString(),
-        },
-      });
-      console.log(`[RAG Processor] Vector prepared for chunk ${chunkIndex}. Current batch size: ${vectors.length}/${batchSize}`);
-      
-      // Upload in batches to avoid rate limiting
-      if (vectors.length >= batchSize || i === textChunks.length - 1) {
-        const currentBatchSize = vectors.length;
-        const batchNumber = Math.floor(i / batchSize) + 1;
-        const totalBatches = Math.ceil(textChunks.length / batchSize);
+      // Upsert batch to Pinecone with retries
+      if (vectors.length > 0) {
+        const maxRetries = 3;
+        let retryCount = 0;
+        let upsertSuccess = false;
         
-        console.log(`\n[RAG Processor] === Processing batch ${batchNumber}/${totalBatches} ===`);
-        console.log(`[RAG Processor] Preparing to upsert batch for chunks up to index ${i}. Batch size: ${vectors.length}`);
-        console.time(`batch_${batchNumber}_total`);
-        
-        // Add a small delay between batches to avoid overwhelming the API
-        if (i > 0 && vectors.length > 0) {
-          console.log(`[RAG Processor] Adding delay of ${batchDelay}ms before processing batch ${batchNumber}...`);
-          await new Promise(resolve => setTimeout(resolve, batchDelay));
-          console.log(`[RAG Processor] Delay completed, proceeding with batch ${batchNumber}`);
-        }
-        
-        const indexNameToLog = process.env.PINECONE_INDEX_NAME || 'undefined_index';
-        console.log(`[RAG Processor] Attempting to upsert batch ${batchNumber}/${totalBatches} (${currentBatchSize} vectors) to Pinecone index '${indexNameToLog}'...`);
-        console.time(`pinecone_upsert_batch_${batchNumber}`);
-        
-        // Add max retries for Pinecone upsert
-        const maxUpsertRetries = 3;
-        let upsertRetryCount = 0;
-        let upsertSucceeded = false;
-        
-        while (upsertRetryCount < maxUpsertRetries && !upsertSucceeded) {
+        while (retryCount < maxRetries && !upsertSuccess) {
           try {
-            // Ensure the index object is valid before calling upsert
-            if (!index || typeof index.upsert !== 'function') {
-              throw new Error('Pinecone index object is invalid or upsert method not found.');
-            }
+            console.log(`[RAG Processor] Upserting batch ${batchIndex + 1} to Pinecone (Attempt ${retryCount + 1}/${maxRetries})`);
+            console.time(`batch_${batchIndex}_upsert`);
+            await index.upsert(vectors as PineconeRecord<RecordMetadata>[]);
+            console.timeEnd(`batch_${batchIndex}_upsert`);
             
-            // Log first vector's dimension for verification
-            if (vectors.length > 0 && vectors[0].values) {
-              console.log(`[RAG Processor] First vector in batch ${batchNumber} dimensions: ${vectors[0].values.length}`);
-            }
+            successfullyUpsertedChunks += vectors.length;
+            upsertSuccess = true;
+            console.log(`[RAG Processor] ✅ Successfully upserted batch ${batchIndex + 1}`);
+          } catch (error) {
+            retryCount++;
+            console.error(`[RAG Processor] ❌ Failed to upsert batch ${batchIndex + 1} (Attempt ${retryCount}/${maxRetries}):`, error);
             
-            // Perform the upsert operation
-            console.log(`[RAG Processor] Calling index.upsert now for batch ${batchNumber} (Attempt ${upsertRetryCount + 1}/${maxUpsertRetries})...`);
-            await index.upsert(vectors);
-            
-            console.timeEnd(`pinecone_upsert_batch_${batchNumber}`);
-            console.log(`[RAG Processor] ✅ Successfully upserted batch ${batchNumber} ending at chunk index ${i}`);
-            upsertSucceeded = true;
-            
-            // Verify upsert with a quick query
-            if (vectors.length > 0) {
-              try {
-                console.time(`pinecone_verify_batch_${batchNumber}`);
-                const describeStats = await index.describeIndexStats();
-                console.log(`[RAG Processor] Index stats after batch ${batchNumber}: totalRecordCount=${describeStats.totalRecordCount}`);
-                console.timeEnd(`pinecone_verify_batch_${batchNumber}`);
-              } catch (verifyError) {
-                console.warn(`[RAG Processor] ⚠️ Could not verify batch ${batchNumber} upsert:`, verifyError);
-              }
-            }
-            
-            successfullyUpsertedChunks += currentBatchSize;
-          } catch (upsertError) {
-            upsertRetryCount++;
-            
-            console.timeEnd(`pinecone_upsert_batch_${batchNumber}`);
-            console.error(`[RAG Processor] ❌ Batch ${batchNumber} upsert FAILED (Attempt ${upsertRetryCount}/${maxUpsertRetries}):`, upsertError);
-            
-            // Mark as overall failure
-            allUpsertsSucceeded = false;
-            
-            // Store first error message if not already set
-            if (!firstErrorMessage && upsertError instanceof Error) {
-              firstErrorMessage = `Upsert error in batch ${batchNumber}: ${upsertError.message}`;
-            }
-            
-            if (upsertError instanceof Error) {
-              console.error(`[RAG Processor] Upsert Error Details for batch ${batchNumber}:
-                Name: ${upsertError.name}
-                Message: ${upsertError.message}
-                Stack: ${upsertError.stack}`);
-            }
-            
-            // Check common environment issues
-            console.log('[RAG Processor] Environment check:');
-            console.log(`- PINECONE_API_KEY present: ${!!process.env.PINECONE_API_KEY}`);
-            console.log(`- PINECONE_INDEX_NAME: ${process.env.PINECONE_INDEX_NAME}`);
-            console.log(`- PINECONE_INDEX_HOST: ${process.env.PINECONE_INDEX_HOST}`);
-            
-            // If not the last retry, add a delay before the next attempt
-            if (upsertRetryCount < maxUpsertRetries) {
-              const retryDelay = 1000 * upsertRetryCount; // Exponential backoff
-              console.log(`[RAG Processor] Retrying batch ${batchNumber} after ${retryDelay}ms delay...`);
-              await new Promise(resolve => setTimeout(resolve, retryDelay));
-              console.log(`[RAG Processor] Retry delay completed for batch ${batchNumber}`);
+            if (retryCount < maxRetries) {
+              const delay = 1000 * retryCount; // Exponential backoff
+              console.log(`[RAG Processor] Retrying batch ${batchIndex + 1} after ${delay}ms delay...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
             } else {
-              // All retries failed
+              allUpsertsSucceeded = false;
               failedUpsertBatches++;
-              console.error(`[RAG Processor] ❌ All ${maxUpsertRetries} attempts to upsert batch ${batchNumber} failed.`);
+              firstErrorMessage = firstErrorMessage || `Failed to upsert batch ${batchIndex + 1} after ${maxRetries} attempts`;
             }
           }
         }
-        
-        console.timeEnd(`batch_${batchNumber}_total`);
-        console.log(`[RAG Processor] === Completed batch ${batchNumber}/${totalBatches} ===\n`);
-        vectors.length = 0; // Clear the array regardless of success/fail
-        
-        if (i + 1 < textChunks.length) {
-          console.log(`[RAG Processor] Moving to process chunk ${i + 2}/${textChunks.length}`);
-        }
       }
       
-      console.timeEnd(`chunk_${chunkIndex}_total`);
-      console.log(`[RAG Processor] === Completed chunk ${chunkIndex}/${textChunks.length} ===\n`);
+      // Add delay between batches to prevent rate limiting
+      if (batchIndex < batches.length - 1) {
+        console.log(`[RAG Processor] Waiting 1000ms before processing next batch...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
 
     // Log final statistics
@@ -514,29 +464,10 @@ export async function processFileForRag({
 
     console.log(`[RAG Processor] === RAG processing completed (intended status: ${finalStatus}) for document ${documentId} ===\n`);
 
-    // Clean up temporary file
-    if (tempFilePath) {
-      try {
-        await unlinkAsync(tempFilePath);
-        console.log(`[RAG Processor] Temporary file cleaned up: ${tempFilePath}`);
-      } catch (cleanupError) {
-        console.warn(`[RAG Processor] Failed to clean up temporary file: ${cleanupError}`);
-      }
-    }
+    return allUpsertsSucceeded;
 
-    return true;
   } catch (error) {
     console.error(`[RAG Processor] Processing failed:`, error);
-    
-    // Clean up temporary file in case of error
-    if (tempFilePath) {
-      try {
-        await unlinkAsync(tempFilePath);
-        console.log(`[RAG Processor] Cleaned up temporary file after error: ${tempFilePath}`);
-      } catch (cleanupError) {
-        console.warn(`[RAG Processor] Failed to clean up temporary file: ${cleanupError}`);
-      }
-    }
     
     // Update status to failed with retries
     console.log(`[RAG Processor] Attempting final 'failed' status update for ${documentId}...`);
