@@ -10,11 +10,19 @@ export const maxDuration = 300; // 5 minutes
  * Verifies request signature and processes documents using processFileForRag
  */
 export async function POST(request: Request) {
+  // Add startup confirmation log
+  console.log(`[RAG Worker] FUNCTION INVOCATION STARTED at ${new Date().toISOString()}`);
   console.log('[RAG Worker] Received job request');
+  
+  // Log request details
+  console.log('[RAG Worker] Request headers:', Object.fromEntries(request.headers.entries()));
+  console.log('[RAG Worker] Request method:', request.method);
+  console.log('[RAG Worker] Request URL:', request.url);
 
   try {
     // Get the raw request body for signature verification
     const rawBody = await request.text();
+    console.log('[RAG Worker] Raw request body:', rawBody);
     
     // Verify QStash signature (commented out until we verify the correct method)
     // const isValid = await verifySignature(request);
@@ -55,6 +63,11 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('[RAG Worker] Unhandled error:', error);
+    if (error instanceof Error) {
+      console.error('[RAG Worker] Error name:', error.name);
+      console.error('[RAG Worker] Error message:', error.message);
+      console.error('[RAG Worker] Error stack:', error.stack);
+    }
     return NextResponse.json(
       { 
         error: 'Internal server error',
