@@ -111,19 +111,13 @@ async function extractTextWithUnstructured(
 /**
  * Processes a document for RAG
  * @param documentId ID of the document to process
- * @param fileUrl URL of the file to download
- * @param fileType MIME type of the file
  * @param userId ID of the user who uploaded the file
  */
 export async function processFileForRag({
   documentId,
-  fileUrl,
-  fileType,
   userId,
 }: {
   documentId: string;
-  fileUrl: string;
-  fileType: string;
   userId: string;
 }): Promise<boolean> {
   console.time('total_rag_processing');
@@ -151,7 +145,10 @@ export async function processFileForRag({
     }
     console.log(`[RAG Processor] Successfully fetched details for ID: ${documentId}. FileName: ${docDetails?.fileName}`);
 
-    const { fileName: documentName, fileType: docType } = docDetails;
+    const { fileName: documentName, fileUrl, fileType } = docDetails;
+    if (!fileUrl) {
+      throw new Error('Document has no associated file URL');
+    }
 
     // Update status to processing
     console.log(`[RAG Processor] Updating status to 'processing' for ${documentId}`);
@@ -167,15 +164,9 @@ export async function processFileForRag({
       throw statusError;
     }
 
-    // Get file URL
-    const fileUrlToUse = fileUrl || docDetails.fileUrl;
-    if (!fileUrlToUse) {
-      throw new Error('Document has no associated file URL');
-    }
-
     // Extract text using Unstructured API
     console.log(`[RAG Processor] Sending URL to Unstructured API for ${documentId}`);
-    const { elements, fullText } = await extractTextWithUnstructured(fileUrlToUse, unstructuredApiKey);
+    const { elements, fullText } = await extractTextWithUnstructured(fileUrl, unstructuredApiKey);
     console.log(`[RAG Processor] Text extraction via Unstructured completed for ${documentId}`);
 
     // Process text chunks

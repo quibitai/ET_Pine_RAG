@@ -1,14 +1,24 @@
-import { auth } from '@/app/(auth)/auth';
-import { saveDocument } from '@/lib/db/queries';
-import { put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
+import { put } from '@vercel/blob';
+import { saveDocument, updateFileRagStatus } from '@/lib/db/queries';
+import { Client } from "@upstash/qstash";
 import { randomUUID } from 'crypto';
-import { z } from 'zod';
 
-// Runtime declaration for Vercel
-export const runtime = 'nodejs';
+// Initialize QStash client
+const qstashClient = new Client({
+  token: process.env.QSTASH_TOKEN!
+});
 
-// Define ArtifactKind locally if it's not available from components
+// Supported document types for RAG processing
+const documentTypes = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'text/markdown'
+];
+
+// Document kind for database
 const ArtifactKind = {
   Text: 'text',
   Code: 'code',
@@ -16,196 +26,99 @@ const ArtifactKind = {
   Sheet: 'sheet'
 } as const;
 
-// File validation schema
-const FileSchema = z.instanceof(Blob)
-  .refine(
-    (file) => file.size <= 10 * 1024 * 1024,
-    {
-      message: 'File size must be less than 10MB',
-    }
-  )
-  .refine(
-    (file) => {
-      const acceptableTypes = [
-        'image/jpeg',
-        'image/png',
-        'application/pdf',
-        'text/plain',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      ];
-      return acceptableTypes.includes(file.type);
-    },
-    {
-      message: 'File type must be one of: JPEG, PNG, PDF, TXT, DOCX',
-    }
-  );
-
-// Function to trigger RAG processing for document
-const createRagDocument = async (documentId: string, fileUrl: string, fileType: string, userId: string) => {
-  console.log(`Starting RAG document processing for document ID: ${documentId}`);
-  
+export async function POST(request: Request): Promise<NextResponse> {
   try {
-    // Import dynamically to avoid circular dependencies
-    const { processFileForRag } = await import('@/lib/rag-processor');
-    
-    // Process the file for RAG asynchronously
-    console.log(`[ASYNC] Triggering background RAG processing for document ${documentId}`);
-    processFileForRag({
-      documentId,
-      fileUrl,
-      fileType,
-      userId,
-    }).catch((error) => {
-      console.error(`[ASYNC] Background RAG processing error:`, error);
-      // Error will be handled within processFileForRag by updating the document status
-    });
-    
-    console.log(`[ASYNC] Background RAG processing initiated for document ${documentId}`);
-    return true;
-  } catch (error) {
-    console.error(`Error starting RAG processing: ${error}`);
-    return false;
-  }
-};
-
-export async function POST(request: Request) {
-  console.log('Upload API route started.');
-  try {
-    // Check authentication
+    // Verify authentication
     const session = await auth();
-    if (!session || !session.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const userId = session.userId;
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    console.log(`User authenticated: ${session.user.id}`);
 
-    // Parse form data
-    console.log('Attempting to parse FormData...');
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-
+    // Get the file from the request
+    const form = await request.formData();
+    const file = form.get('file') as File;
+    
     if (!file) {
-      console.log('No file found in request');
-      return NextResponse.json({ error: 'No file found' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'No file provided' },
+        { status: 400 }
+      );
     }
 
-    const filename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    console.log(`FormData parsed. File name: ${filename} File type: ${file.type} File size: ${file.size}`);
+    // Upload file to blob storage
+    const { url } = await put(file.name, file, {
+      access: 'public',
+    });
 
-    // Validate file using Zod
-    console.log('Validating file with Zod...');
-    const validatedFile = FileSchema.safeParse(file);
-    console.log('Zod validation result:', validatedFile.success ? 'success' : validatedFile.error.errors);
+    // Generate document ID
+    const documentId = randomUUID();
 
-    if (!validatedFile.success) {
-      const errorMessage = validatedFile.error.errors
-        .map((error) => error.message)
-        .join(', ');
-      console.log('File validation failed:', errorMessage);
-      return NextResponse.json({ error: errorMessage }, { status: 400 });
-    }
+    // Save document metadata to database
+    await saveDocument({
+      id: documentId,
+      title: file.name,
+      kind: ArtifactKind.Text,
+      userId: userId,
+      fileUrl: url,
+      fileName: file.name,
+      fileSize: file.size.toString(),
+      fileType: file.type,
+      processingStatus: 'pending'
+    });
 
-    const fileBuffer = await file.arrayBuffer();
-    console.log('File buffer prepared. Size:', fileBuffer.byteLength);
+    console.log(`[Upload API] Document ${documentId} saved to database`);
 
-    try {
-      console.log(`Uploading file to Vercel Blob...`);
+    // If document type is supported, enqueue RAG processing
+    if (documentTypes.includes(file.type)) {
+      console.log(`[Upload API] Enqueuing RAG processing for document ${documentId}`);
       
-      // Log environment variables (without revealing full tokens)
-      const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
-      console.log(`BLOB_READ_WRITE_TOKEN present: ${!!blobToken}`);
-      if (!blobToken) {
-        throw new Error('BLOB_READ_WRITE_TOKEN environment variable is missing');
-      }
-      
-      // Generate a unique file path to avoid name collisions
-      const uniqueFilename = `${Date.now()}-${filename}`;
-      
-      // Upload directly to Vercel Blob with enhanced error handling
-      let data;
       try {
-        data = await put(uniqueFilename, Buffer.from(fileBuffer), {
-          contentType: file.type,
-          access: 'public',
+        await qstashClient.publishJSON({
+          url: new URL('/api/rag-worker', request.url).toString(),
+          body: {
+            documentId,
+            userId,
+          },
+          // Optional: Configure retries
+          retries: 3,
         });
-        console.log('File upload successful:', data.url);
-      } catch (blobError: any) {
-        console.error('Vercel Blob specific error:', blobError);
-        console.error('Error details:', blobError.message);
-        console.error('Error name:', blobError.name);
-        if (blobError.response) {
-          console.error('Error response:', blobError.response.status, blobError.response.statusText);
-        }
-        return NextResponse.json({ 
-          error: 'Failed to upload file to storage', 
-          details: blobError.message
-        }, { status: 500 });
+        
+        console.log(`[Upload API] Successfully enqueued RAG job for ${documentId}`);
+        
+      } catch (queueError) {
+        console.error(`[Upload API] Failed to enqueue RAG job for ${documentId}:`, queueError);
+        
+        // Update document status to failed
+        await updateFileRagStatus({
+          id: documentId,
+          processingStatus: 'failed',
+          statusMessage: 'Failed to queue processing job'
+        });
+        
+        // Don't fail the upload response, just return success with warning
+        return NextResponse.json({
+          documentId,
+          url,
+          warning: 'File uploaded but processing queue failed'
+        });
       }
-      
-      // Save the document reference in the database
-      const documentId = randomUUID();
-      const userId = session.user.id;
-      
-      // Ensure userId is a string
-      if (!userId) {
-        return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-      }
-      
-      await saveDocument({
-        id: documentId,
-        title: filename,
-        fileUrl: data.url,
-        fileName: filename,
-        fileType: file.type,
-        fileSize: file.size.toString(),
-        userId,
-        kind: ArtifactKind.Text,
-        processingStatus: 'pending',
-      });
-      console.log('Document entry created in database with ID:', documentId);
-      
-      // If the file type is a document that can be processed for RAG, trigger processing
-      const documentTypes = [
-        'application/pdf',
-        'text/plain',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      ];
-      
-      if (documentTypes.includes(file.type)) {
-        console.log('Document type is eligible for RAG processing. Initiating background processing...');
-        try {
-          // Run asynchronously without await
-          createRagDocument(documentId, data.url, file.type, userId);
-          console.log('Background RAG processing triggered successfully.');
-        } catch (error) {
-          console.error('Error triggering background RAG processing:', error);
-          // Still don't fail the request - RAG processing is secondary to file upload
-        }
-      } else {
-        console.log('Document type not eligible for RAG processing');
-      }
-      
-      // Return success with the document ID
-      return NextResponse.json({ 
-        id: documentId,
-        url: data.url,
-        name: filename,
-        pathname: filename,
-        contentType: file.type
-      });
-    } catch (error: any) {
-      console.error('Error uploading file:', error);
-      console.error('Error stack:', error.stack);
-      return NextResponse.json({ 
-        error: 'Failed to upload file', 
-        details: error instanceof Error ? error.message : String(error) 
-      }, { status: 500 });
     }
-  } catch (error: any) {
-    console.error('Unhandled error in upload API route:', error);
-    console.error('Error stack:', error.stack);
-    return NextResponse.json({ 
-      error: 'Internal server error', 
-      details: error instanceof Error ? error.message : String(error) 
-    }, { status: 500 });
+
+    // Return success response
+    return NextResponse.json({
+      documentId,
+      url
+    });
+
+  } catch (error) {
+    console.error('[Upload API] Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
