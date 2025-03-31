@@ -5,5 +5,8 @@ import { authConfig } from '@/app/(auth)/auth.config';
 export default NextAuth(authConfig).auth;
 
 export const config = {
-  matcher: ['/', '/:id', '/api/:path*', '/login', '/register'],
+  // Match everything EXCEPT specific API routes like the QStash worker
+  matcher: [
+    '/((?!api/rag-worker|_next/static|_next/image|favicon.ico).*)',
+  ],
 };

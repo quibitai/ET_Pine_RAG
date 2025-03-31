@@ -24,13 +24,25 @@ export async function POST(request: Request) {
     const rawBody = await request.text();
     console.log('[RAG Worker] Raw request body:', rawBody);
     
-    // Verify QStash signature (commented out until we verify the correct method)
-    // const isValid = await verifySignature(request);
-    // 
-    // if (!isValid) {
-    //   console.error('[RAG Worker] Invalid QStash signature');
-    //   return new Response('Invalid signature', { status: 401 });
-    // }
+    // Verify QStash signature
+    const signature = request.headers.get("upstash-signature");
+    if (!signature) {
+      console.error('[RAG Worker] Missing Upstash signature');
+      return new Response("Signature required", { status: 401 });
+    }
+
+    const isValid = await verifySignature({
+      signature: signature,
+      body: rawBody,
+      currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY!,
+      nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY!,
+    });
+
+    if (!isValid) {
+      console.error('[RAG Worker] Invalid QStash signature');
+      return new Response('Invalid signature', { status: 401 });
+    }
+    console.log('[RAG Worker] QStash signature verified successfully.');
 
     // Parse the job payload
     const body = JSON.parse(rawBody);

@@ -34,51 +34,35 @@ export const maxDuration = 60;
 export const runtime = 'nodejs';
 
 /**
- * Ensures all non-image attachments have a contentType property
- * This resolves the error: "If the attachment is not an image, it must specify a content type"
+ * Ensures all attachments have a valid content type
  */
 function ensureAttachmentsHaveContentType(messages: Array<UIMessage>): Array<UIMessage> {
   return messages.map(message => {
-    // Skip messages without attachments
     if (!message.experimental_attachments || message.experimental_attachments.length === 0) {
       return message;
     }
-
-    // Process attachments to ensure contentType exists for non-image files
     const fixedAttachments = message.experimental_attachments.map(attachment => {
-      // If contentType already exists, no need to modify
-      if (attachment.contentType) {
+      // If contentType exists and is not empty, keep it
+      if (attachment.contentType && attachment.contentType.trim() !== '') {
         return attachment;
       }
-
-      // Try to infer contentType from file extension if missing
+      // Infer based on name if possible
       const filename = attachment.name?.toLowerCase() || '';
-      let inferredContentType = '';
-
-      if (filename.endsWith('.pdf')) {
-        inferredContentType = 'application/pdf';
-      } else if (filename.endsWith('.txt')) {
-        inferredContentType = 'text/plain';
-      } else if (filename.endsWith('.docx')) {
-        inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      } else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
-        inferredContentType = 'image/jpeg';
-      } else if (filename.endsWith('.png')) {
-        inferredContentType = 'image/png';
-      }
-
-      console.log(`Fixed missing contentType for attachment: ${filename} → ${inferredContentType}`);
+      let inferredContentType = attachment.contentType || ''; // Keep original if it existed but was empty
       
-      return {
-        ...attachment,
-        contentType: inferredContentType
-      };
+      if (!inferredContentType) { // Only infer if truly missing
+        if (filename.endsWith('.pdf')) inferredContentType = 'application/pdf';
+        else if (filename.endsWith('.txt')) inferredContentType = 'text/plain';
+        else if (filename.endsWith('.docx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) inferredContentType = 'image/jpeg';
+        else if (filename.endsWith('.png')) inferredContentType = 'image/png';
+        else inferredContentType = 'application/octet-stream'; // Fallback
+      }
+      
+      console.log(`Attachment Fix: Name='${filename || 'N/A'}', OriginalType='${attachment.contentType || ''}', FinalType='${inferredContentType}'`);
+      return { ...attachment, contentType: inferredContentType };
     });
-
-    return {
-      ...message,
-      experimental_attachments: fixedAttachments
-    };
+    return { ...message, experimental_attachments: fixedAttachments };
   });
 }
 
@@ -104,7 +88,7 @@ export async function POST(request: Request) {
 
     console.log("Request parsed: ", { id, messageCount: originalMessages.length, selectedChatModel });
 
-    // Fix contentType issues in messages
+    // Ensure attachments have content types
     const messages = ensureAttachmentsHaveContentType(originalMessages);
 
     console.time('authenticate_user');
