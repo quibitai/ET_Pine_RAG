@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/app/(auth)/auth';
 import { put } from '@vercel/blob';
 import { saveDocument, updateFileRagStatus } from '@/lib/db/queries';
 import { Client } from "@upstash/qstash";
@@ -30,13 +30,13 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     // Verify authentication
     const session = await auth();
-    const userId = session.userId;
-    if (!userId) {
+    if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+    const userId = session.user.id;
 
     // Get the file from the request
     const form = await request.formData();
