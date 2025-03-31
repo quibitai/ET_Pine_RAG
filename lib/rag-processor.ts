@@ -11,6 +11,7 @@ import { promisify } from 'util';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import type { RecordMetadata, ScoredPineconeRecord } from '@pinecone-database/pinecone';
 
 const unlinkAsync = promisify(unlink);
 
@@ -447,23 +448,71 @@ export async function processFileForRag({
     console.log(`Failed upsert batches: ${failedUpsertBatches}`);
     console.log(`Overall success: ${allUpsertsSucceeded ? 'Yes' : 'No'}`);
 
-    // Update final status with detailed message
+    // Verify data in Pinecone before final status update
+    console.log(`[RAG Processor] Verifying data persistence in Pinecone for ${documentId}...`);
+    try {
+      // Check for the first chunk as verification
+      const testVectorId = `${documentId}_chunk_1`;
+      console.log(`[RAG Processor] Fetching test vector: ${testVectorId}`);
+      const fetchResponse = await index.fetch([testVectorId]);
+      
+      // Defensive check for response structure
+      const responseData = fetchResponse as unknown as { vectors?: Record<string, unknown> };
+      const vectorExists = responseData?.vectors && testVectorId in responseData.vectors;
+      
+      if (vectorExists) {
+        console.log(`[RAG Processor] ✅ Successfully verified vector in Pinecone: ${testVectorId}`);
+      } else {
+        console.warn(`[RAG Processor] ⚠️ Could not find test vector in Pinecone: ${testVectorId}`);
+        allUpsertsSucceeded = false;
+        firstErrorMessage = 'Failed to verify data persistence in Pinecone';
+      }
+    } catch (error) {
+      const pineconeVerifyError = error as Error;
+      console.error('[RAG Processor] ❌ Error verifying Pinecone data:', pineconeVerifyError);
+      allUpsertsSucceeded = false;
+      firstErrorMessage = `Pinecone verification failed: ${pineconeVerifyError.message}`;
+    }
+
+    // Prepare final status update with retries
     const finalStatus = allUpsertsSucceeded ? 'completed' : 'failed';
     const finalMessage = allUpsertsSucceeded 
       ? `Successfully processed all ${totalChunksProcessed} chunks`
       : `Partially failed: ${successfullyUpsertedChunks}/${totalChunksProcessed} chunks processed successfully. ${failedUpsertBatches} batch(es) failed. Error: ${firstErrorMessage || 'Unknown error'}`;
 
-    console.log(`\n[RAG Processor] Setting final status to: ${finalStatus}`);
-    console.log(`[RAG Processor] Final status message: ${finalMessage}`);
+    console.log(`\n[RAG Processor] Attempting final '${finalStatus}' status update for ${documentId}...`);
+    
+    // Add retry logic for final status update
+    const maxStatusUpdateRetries = 3;
+    let statusUpdateRetryCount = 0;
+    let statusUpdateSuccess = false;
 
-    // Update status
-    await updateFileRagStatus({
-      id: documentId,
-      processingStatus: finalStatus,
-      statusMessage: finalMessage
-    });
+    while (statusUpdateRetryCount < maxStatusUpdateRetries && !statusUpdateSuccess) {
+      try {
+        await updateFileRagStatus({
+          id: documentId,
+          processingStatus: finalStatus,
+          statusMessage: finalMessage
+        });
+        console.log(`[RAG Processor] ✅ Successfully updated status to '${finalStatus}' for ${documentId} in DB.`);
+        statusUpdateSuccess = true;
+      } catch (dbUpdateError) {
+        statusUpdateRetryCount++;
+        console.error(`[RAG Processor] ❌ FAILED to update status to '${finalStatus}' for ${documentId} in DB (Attempt ${statusUpdateRetryCount}/${maxStatusUpdateRetries}):`, dbUpdateError);
+        
+        if (statusUpdateRetryCount < maxStatusUpdateRetries) {
+          const retryDelay = 1000 * statusUpdateRetryCount; // Exponential backoff
+          console.log(`[RAG Processor] Retrying status update after ${retryDelay}ms delay...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+    }
 
-    console.log(`[RAG Processor] === RAG processing completed for document ${documentId} ===\n`);
+    if (!statusUpdateSuccess) {
+      console.error(`[RAG Processor] ❌ All ${maxStatusUpdateRetries} attempts to update final status failed.`);
+    }
+
+    console.log(`[RAG Processor] === RAG processing completed (intended status: ${finalStatus}) for document ${documentId} ===\n`);
 
     // Clean up temporary file
     if (tempFilePath) {
@@ -489,12 +538,36 @@ export async function processFileForRag({
       }
     }
     
-    // Update status to failed
-    await updateFileRagStatus({
-      id: documentId,
-      processingStatus: 'failed',
-      statusMessage: error instanceof Error ? error.message : 'Unknown error'
-    });
+    // Update status to failed with retries
+    console.log(`[RAG Processor] Attempting final 'failed' status update for ${documentId}...`);
+    const maxStatusUpdateRetries = 3;
+    let statusUpdateRetryCount = 0;
+    let statusUpdateSuccess = false;
+
+    while (statusUpdateRetryCount < maxStatusUpdateRetries && !statusUpdateSuccess) {
+      try {
+        await updateFileRagStatus({
+          id: documentId,
+          processingStatus: 'failed',
+          statusMessage: error instanceof Error ? error.message : 'Unknown error'
+        });
+        console.log(`[RAG Processor] ✅ Successfully updated status to 'failed' for ${documentId} in DB.`);
+        statusUpdateSuccess = true;
+      } catch (dbUpdateError) {
+        statusUpdateRetryCount++;
+        console.error(`[RAG Processor] ❌ FAILED to update status to 'failed' for ${documentId} in DB (Attempt ${statusUpdateRetryCount}/${maxStatusUpdateRetries}):`, dbUpdateError);
+        
+        if (statusUpdateRetryCount < maxStatusUpdateRetries) {
+          const retryDelay = 1000 * statusUpdateRetryCount; // Exponential backoff
+          console.log(`[RAG Processor] Retrying status update after ${retryDelay}ms delay...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+    }
+
+    if (!statusUpdateSuccess) {
+      console.error(`[RAG Processor] ❌ All ${maxStatusUpdateRetries} attempts to update final status failed.`);
+    }
     
     return false;
   }
