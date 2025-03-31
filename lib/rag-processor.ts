@@ -178,22 +178,45 @@ export async function processFileForRag({
 
   const { fileName: documentName, fileType: docType } = docDetails;
 
-  // Download the file
-  let fileBuffer;
+  // Download the file with enhanced error handling
+  let fileBuffer: Buffer | null = null;
   try {
     console.log(`[RAG Processor] Preparing to download file for ${documentId}`);
+    console.log(`[RAG Processor] Download URL: ${fileUrl.split('?')[0]}`); // Log URL without query params
     fileBuffer = await downloadFile(fileUrl);
     console.log(`[RAG Processor] File download completed for ${documentId}. Buffer size: ${fileBuffer?.byteLength}`);
-  } catch (error) {
-    console.error('[RAG Processor] Failed to download file:', error);
+  } catch (downloadError) {
+    console.error(`❌ [RAG Processor] CRITICAL ERROR during downloadFile for ${documentId}:`, downloadError);
+    if (downloadError instanceof Error) {
+      console.error(`[RAG Processor] Download Error Details:
+        Name: ${downloadError.name}
+        Message: ${downloadError.message}
+        Stack: ${downloadError.stack}`);
+    }
+    // Update status to failed immediately if download fails
     await updateFileRagStatus({ 
       id: documentId, 
       processingStatus: 'failed', 
-      statusMessage: 'Failed to download file' 
+      statusMessage: `Failed during file download: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}` 
+    });
+    return false; // Stop processing this file
+  }
+
+  // Validate the downloaded buffer
+  if (!fileBuffer || fileBuffer.byteLength === 0) {
+    console.error(`❌ [RAG Processor] File buffer is null or empty after download attempt for ${documentId}.`);
+    await updateFileRagStatus({ 
+      id: documentId, 
+      processingStatus: 'failed', 
+      statusMessage: 'File buffer empty after download.' 
     });
     return false;
   }
 
+  // Log buffer details for debugging
+  console.log(`[RAG Processor] Buffer validation passed. Size: ${fileBuffer.byteLength} bytes`);
+  console.log(`[RAG Processor] Buffer type: ${Object.prototype.toString.call(fileBuffer)}`);
+  
   // Extract text based on file type
   let extractedText = '';
   console.log(`[RAG Processor] Preparing to extract text (${fileType}) for ${documentId}`);
