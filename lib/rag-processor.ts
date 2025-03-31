@@ -3,96 +3,15 @@ import { generateEmbeddings } from './ai/utils';
 import { updateFileRagStatus, getDocumentById } from './db/queries';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import mammoth from 'mammoth';
+import { createWriteStream, createReadStream, unlink } from 'fs';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
+import { promisify } from 'util';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { randomUUID } from 'crypto';
 
-/**
- * Extracts text from a PDF buffer
- * @param buffer PDF file buffer
- * @returns Extracted text
- */
-async function extractTextFromPDF(buffer: Buffer): Promise<string> {
-  try {
-    console.log('Extracting text from PDF...');
-    console.log(`PDF buffer size: ${buffer.byteLength} bytes`);
-    
-    // Check if buffer is valid
-    if (!buffer || buffer.byteLength === 0) {
-      throw new Error('Empty or invalid PDF buffer');
-    }
-    
-    // Log first few bytes of buffer for debugging
-    const bufferPreview = buffer.slice(0, Math.min(20, buffer.byteLength));
-    console.log(`Buffer preview: ${bufferPreview.toString('hex')}`);
-    
-    // Check PDF header (should start with %PDF-)
-    const header = buffer.slice(0, 5).toString();
-    if (!header.startsWith('%PDF-')) {
-      console.warn(`PDF header check failed. Found: ${header}`);
-    }
-    
-    // Use minimal options for production reliability
-    console.log('Calling pdfParse with buffer...');
-    const result = await pdfParse(buffer);
-    
-    const extractedLength = result.text ? result.text.length : 0;
-    console.log(`PDF extraction complete. Extracted ${extractedLength} characters.`);
-    
-    if (extractedLength === 0) {
-      console.warn('PDF parsing succeeded but extracted 0 characters. This PDF may be image-based or have no text content.');
-      return "This PDF appears to contain no extractable text. It may be image-based or scanned. Please upload a text-based PDF or use a different document format.";
-    }
-    
-    return result.text;
-  } catch (error) {
-    console.error('Error extracting text from PDF:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`PDF extraction error details: ${errorMessage}`);
-    
-    // Return a fallback message when extraction fails
-    return `This PDF could not be processed due to the following issue: ${errorMessage}. Please try uploading a different file or a text-based version of this document.`;
-  }
-}
-
-/**
- * Extracts text from a DOCX buffer
- * @param buffer DOCX file buffer
- * @returns Extracted text
- */
-async function extractTextFromDOCX(buffer: Buffer): Promise<string> {
-  try {
-    console.log('Extracting text from DOCX...');
-    
-    const result = await mammoth.extractRawText({ buffer });
-    
-    console.log(`DOCX extraction complete. Extracted ${result.value.length} characters.`);
-    return result.value;
-  } catch (error) {
-    console.error('Error extracting text from DOCX:', error);
-    
-    // Return a fallback message when extraction fails
-    return "This DOCX file could not be processed due to formatting issues. Please try uploading a different file or a text-based version of this document.";
-  }
-}
-
-/**
- * Downloads a file from a URL
- * @param url URL to download from
- * @returns Buffer containing the file data
- */
-async function downloadFile(url: string): Promise<Buffer> {
-  try {
-    console.log(`Downloading file from ${url}`);
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to download file: ${response.statusText}`);
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    console.log(`File download complete. Size: ${arrayBuffer.byteLength} bytes`);
-    return Buffer.from(arrayBuffer);
-  } catch (error) {
-    console.error('Error downloading file:', error);
-    throw new Error('Failed to download file');
-  }
-}
+const unlinkAsync = promisify(unlink);
 
 /**
  * Splits text into chunks of specified size with overlap
@@ -132,6 +51,119 @@ function chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
 }
 
 /**
+ * Downloads a file from a URL using streaming to avoid memory issues
+ * @param url URL to download from
+ * @returns Path to the temporary file
+ */
+async function downloadFileStream(url: string): Promise<string> {
+  console.log(`[downloadFile ENTRY] Function called for URL: ${url.split('?')[0]}`);
+  
+  try {
+    // Create a temporary file path
+    const tempFilePath = join(tmpdir(), `${randomUUID()}-download`);
+    console.log(`[downloadFile] Created temp file: ${tempFilePath}`);
+    
+    // Fetch the file
+    const response = await fetch(url);
+    if (!response.ok || !response.body) {
+      throw new Error(`Failed to download file: ${response.statusText}`);
+    }
+    
+    // Create write stream to temporary file
+    const fileStream = createWriteStream(tempFilePath);
+    
+    // Create a Node.js readable stream from the response body
+    const reader = response.body.getReader();
+    const nodeReadable = new Readable({
+      async read() {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            this.push(null);
+          } else {
+            this.push(Buffer.from(value));
+          }
+        } catch (error) {
+          this.destroy(error as Error);
+        }
+      }
+    });
+    
+    // Stream the download to the temporary file
+    console.log('[downloadFile] Starting streaming download...');
+    await pipeline(nodeReadable, fileStream);
+    console.log('[downloadFile] Download stream completed successfully');
+    
+    return tempFilePath;
+  } catch (error) {
+    console.error('[downloadFile] Error during streaming download:', error);
+    throw error;
+  }
+}
+
+/**
+ * Extracts text from a PDF file using streaming
+ * @param filePath Path to the PDF file
+ * @returns Extracted text
+ */
+async function extractTextFromPDF(filePath: string): Promise<string> {
+  try {
+    console.log('[extractTextFromPDF] Starting PDF text extraction...');
+    // Read the file into a buffer (pdf-parse requires a buffer)
+    const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      const readStream = createReadStream(filePath);
+      readStream.on('data', (chunk: Buffer | string) => {
+        if (Buffer.isBuffer(chunk)) {
+          chunks.push(chunk);
+        } else {
+          chunks.push(Buffer.from(chunk));
+        }
+      });
+      readStream.on('end', () => resolve(Buffer.concat(chunks)));
+      readStream.on('error', reject);
+    });
+    
+    const result = await pdfParse(pdfBuffer);
+    
+    const extractedLength = result.text ? result.text.length : 0;
+    console.log(`[extractTextFromPDF] Extraction complete. Extracted ${extractedLength} characters.`);
+    
+    if (extractedLength === 0) {
+      console.warn('[extractTextFromPDF] PDF parsing succeeded but extracted 0 characters.');
+      return "This PDF appears to contain no extractable text. It may be image-based or scanned.";
+    }
+    
+    return result.text;
+  } catch (error) {
+    console.error('[extractTextFromPDF] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return `This PDF could not be processed: ${errorMessage}`;
+  }
+}
+
+/**
+ * Extracts text from a DOCX buffer
+ * @param buffer DOCX file buffer
+ * @returns Extracted text
+ */
+async function extractTextFromDOCX(buffer: Buffer): Promise<string> {
+  try {
+    console.log('Extracting text from DOCX...');
+    
+    const result = await mammoth.extractRawText({ buffer });
+    
+    console.log(`DOCX extraction complete. Extracted ${result.value.length} characters.`);
+    return result.value;
+  } catch (error) {
+    console.error('Error extracting text from DOCX:', error);
+    
+    // Return a fallback message when extraction fails
+    return "This DOCX file could not be processed due to formatting issues. Please try uploading a different file or a text-based version of this document.";
+  }
+}
+
+/**
  * Processes a document for RAG
  * @param documentId ID of the document to process
  * @param fileUrl URL of the file to download
@@ -153,6 +185,7 @@ export async function processFileForRag({
   console.log(`[RAG Processor] Starting RAG processing for document ${documentId}`);
   
   let docDetails;
+  let tempFilePath: string | null = null;
   try {
     docDetails = await getDocumentById({ id: documentId });
     console.log(`[RAG Processor] Successfully fetched details for ID: ${documentId}. FileName: ${docDetails?.fileName}`);
@@ -179,12 +212,11 @@ export async function processFileForRag({
   const { fileName: documentName, fileType: docType } = docDetails;
 
   // Download the file with enhanced error handling
-  let fileBuffer: Buffer | null = null;
   try {
     console.log(`[RAG Processor] Preparing to download file for ${documentId}`);
     console.log(`[RAG Processor] Download URL: ${fileUrl.split('?')[0]}`); // Log URL without query params
-    fileBuffer = await downloadFile(fileUrl);
-    console.log(`[RAG Processor] File download completed for ${documentId}. Buffer size: ${fileBuffer?.byteLength}`);
+    tempFilePath = await downloadFileStream(fileUrl);
+    console.log(`[RAG Processor] File downloaded to temporary location: ${tempFilePath}`);
   } catch (downloadError) {
     console.error(`❌ [RAG Processor] CRITICAL ERROR during downloadFile for ${documentId}:`, downloadError);
     if (downloadError instanceof Error) {
@@ -203,19 +235,19 @@ export async function processFileForRag({
   }
 
   // Validate the downloaded buffer
-  if (!fileBuffer || fileBuffer.byteLength === 0) {
-    console.error(`❌ [RAG Processor] File buffer is null or empty after download attempt for ${documentId}.`);
+  if (!tempFilePath || !fileUrl) {
+    console.error(`❌ [RAG Processor] File path is null or empty after download attempt for ${documentId}.`);
     await updateFileRagStatus({ 
       id: documentId, 
       processingStatus: 'failed', 
-      statusMessage: 'File buffer empty after download.' 
+      statusMessage: 'File path empty after download.' 
     });
     return false;
   }
 
   // Log buffer details for debugging
-  console.log(`[RAG Processor] Buffer validation passed. Size: ${fileBuffer.byteLength} bytes`);
-  console.log(`[RAG Processor] Buffer type: ${Object.prototype.toString.call(fileBuffer)}`);
+  console.log(`[RAG Processor] Buffer validation passed. File path: ${tempFilePath}`);
+  console.log(`[RAG Processor] Buffer type: ${typeof tempFilePath}`);
   
   // Extract text based on file type
   let extractedText = '';
@@ -223,11 +255,23 @@ export async function processFileForRag({
   
   try {
     if (fileType === 'application/pdf') {
-      extractedText = await extractTextFromPDF(fileBuffer);
+      extractedText = await extractTextFromPDF(tempFilePath);
     } else if (fileType === 'text/plain') {
-      extractedText = fileBuffer.toString('utf-8');
+      extractedText = await new Promise((resolve, reject) => {
+        let text = '';
+        const readStream = createReadStream(tempFilePath, { encoding: 'utf8' });
+        readStream.on('data', chunk => { text += chunk; });
+        readStream.on('end', () => resolve(text));
+        readStream.on('error', reject);
+      });
     } else if (fileType === 'text/markdown' || fileType === 'application/x-markdown') {
-      extractedText = fileBuffer.toString('utf-8');
+      extractedText = await new Promise((resolve, reject) => {
+        let text = '';
+        const readStream = createReadStream(tempFilePath, { encoding: 'utf8' });
+        readStream.on('data', chunk => { text += chunk; });
+        readStream.on('end', () => resolve(text));
+        readStream.on('error', reject);
+      });
     } else {
       throw new Error(`Unsupported file type: ${fileType}`);
     }
@@ -484,5 +528,16 @@ export async function processFileForRag({
   });
 
   console.log(`[RAG Processor] === RAG processing completed for document ${documentId} ===\n`);
+
+  // Clean up temporary file
+  if (tempFilePath) {
+    try {
+      await unlinkAsync(tempFilePath);
+      console.log(`[RAG Processor] Temporary file cleaned up: ${tempFilePath}`);
+    } catch (cleanupError) {
+      console.warn(`[RAG Processor] Failed to clean up temporary file: ${cleanupError}`);
+    }
+  }
+
   return true;
 } 
