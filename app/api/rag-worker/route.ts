@@ -16,18 +16,18 @@ export async function POST(request: Request) {
     // Get the raw request body for signature verification
     const rawBody = await request.text();
     
-    // Verify QStash signature (uncomment when environment variables are set)
-    // const isValid = await verifySignature({
-    //   body: rawBody,
-    //   signature: request.headers.get("upstash-signature")!,
-    //   currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY!,
-    //   nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY!,
-    // });
+    // Verify QStash signature
+    const isValid = await verifySignature({
+      body: rawBody,
+      signature: request.headers.get("upstash-signature")!,
+      currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY!,
+      nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY!,
+    });
     
-    // if (!isValid) {
-    //   console.error('[RAG Worker] Invalid QStash signature');
-    //   return new Response('Invalid signature', { status: 401 });
-    // }
+    if (!isValid) {
+      console.error('[RAG Worker] Invalid QStash signature');
+      return new Response('Invalid signature', { status: 401 });
+    }
 
     // Parse the job payload
     const body = JSON.parse(rawBody);
