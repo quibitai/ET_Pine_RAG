@@ -48,24 +48,19 @@ const createRagDocument = async (documentId: string, fileUrl: string, fileType: 
     // Import dynamically to avoid circular dependencies
     const { processFileForRag } = await import('@/lib/rag-processor');
     
-    // Process the file for RAG - use await for diagnostic testing
-    try {
-      console.log(`[TEST_SYNC] About to call processFileForRag synchronously for document ${documentId}`);
-      await processFileForRag({
-        documentId,
-        fileUrl,
-        fileType,
-        userId,
-      });
-      console.log(`[TEST_SYNC] Completed synchronous RAG processing for document ${documentId}`);
-    } catch (processingError) {
-      console.error(`[TEST_SYNC] Error during synchronous RAG processing:`, processingError);
-      if (processingError instanceof Error) {
-        console.error(`[TEST_SYNC] Error details: ${processingError.message}`);
-        console.error(`[TEST_SYNC] Stack trace: ${processingError.stack}`);
-      }
-    }
+    // Process the file for RAG asynchronously
+    console.log(`[ASYNC] Triggering background RAG processing for document ${documentId}`);
+    processFileForRag({
+      documentId,
+      fileUrl,
+      fileType,
+      userId,
+    }).catch((error) => {
+      console.error(`[ASYNC] Background RAG processing error:`, error);
+      // Error will be handled within processFileForRag by updating the document status
+    });
     
+    console.log(`[ASYNC] Background RAG processing initiated for document ${documentId}`);
     return true;
   } catch (error) {
     console.error(`Error starting RAG processing: ${error}`);
@@ -176,13 +171,13 @@ export async function POST(request: Request) {
       ];
       
       if (documentTypes.includes(file.type)) {
-        console.log('Document type is eligible for RAG processing. Attempting synchronous call...');
+        console.log('Document type is eligible for RAG processing. Initiating background processing...');
         try {
-          // Use await here to run synchronously for diagnostic purposes
-          await createRagDocument(documentId, data.url, file.type, userId);
-          console.log('Synchronous RAG processing trigger completed.');
+          // Run asynchronously without await
+          createRagDocument(documentId, data.url, file.type, userId);
+          console.log('Background RAG processing triggered successfully.');
         } catch (error) {
-          console.error('Error during synchronous RAG processing trigger:', error);
+          console.error('Error triggering background RAG processing:', error);
           // Still don't fail the request - RAG processing is secondary to file upload
         }
       } else {
