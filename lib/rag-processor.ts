@@ -3,7 +3,8 @@ import { generateEmbeddings } from './ai/utils';
 import { updateFileRagStatus, getDocumentById } from './db/queries';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import mammoth from 'mammoth';
-import { createWriteStream, createReadStream, unlink } from 'fs';
+import { createWriteStream, createReadStream } from 'fs';
+import { unlink, readFile } from 'fs/promises';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { promisify } from 'util';
@@ -109,34 +110,27 @@ async function downloadFileStream(url: string): Promise<string> {
 async function extractTextFromPDF(filePath: string): Promise<string> {
   try {
     console.log(`[extractTextFromPDF] Starting PDF text extraction from path: ${filePath}`);
-
-    // Read file as buffer since pdf-parse requires it
-    const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
-      const readStream = createReadStream(filePath);
-      const chunks: Buffer[] = [];
-      readStream.on('data', (chunk: Buffer | string) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      });
-      readStream.on('end', () => resolve(Buffer.concat(chunks)));
-      readStream.on('error', reject);
-    });
-
-    // Pass buffer to pdfParse
-    const result = await pdfParse(pdfBuffer);
-
+    
+    // Read file as buffer (pdf-parse requires Buffer input)
+    const dataBuffer = await readFile(filePath);
+    console.log(`[extractTextFromPDF] File read into buffer. Size: ${dataBuffer.length} bytes`);
+    
+    // Parse PDF
+    const result = await pdfParse(dataBuffer);
+    
     const extractedLength = result.text ? result.text.length : 0;
     console.log(`[extractTextFromPDF] Extraction complete. Extracted ${extractedLength} characters.`);
-
+    
     if (extractedLength === 0) {
       console.warn('[extractTextFromPDF] PDF parsing succeeded but extracted 0 characters.');
       return "This PDF appears to contain no extractable text. It may be image-based or scanned.";
     }
-
+    
     return result.text;
   } catch (error) {
     console.error('[extractTextFromPDF] Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    // Return error message, but allow main process to handle status update
+    // Re-throw the error so the main catch block in processFileForRag handles the status update
     throw new Error(`PDF processing error: ${errorMessage}`); 
   }
 }
