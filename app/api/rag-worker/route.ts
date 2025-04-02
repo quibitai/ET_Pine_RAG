@@ -82,50 +82,41 @@ export async function PATCH(request: Request) {
   }
 }
 
-// Simplified debugging version of the POST handler
+// Make sure no QStash wrapper is exported with this handler
 export async function POST(request: Request): Promise<NextResponse> {
     const startTime = new Date();
-    console.log(`[RAG Worker - DEBUG MODE] ============ HANDLER INVOKED ============`);
-    console.log(`[RAG Worker - DEBUG MODE] Handler started at ${startTime.toISOString()}`);
+    console.log(`[RAG Worker - DEBUG LEVEL 2] ============ HANDLER INVOKED ============`);
+    console.log(`[RAG Worker - DEBUG LEVEL 2] Handler started at ${startTime.toISOString()}`);
 
-    // Log environment and headers
-    console.log(`[RAG Worker - DEBUG MODE] Environment: ${process.env.NODE_ENV || 'unknown'}`);
-    console.log(`[RAG Worker - DEBUG MODE] Vercel env: ${process.env.VERCEL_ENV || 'not Vercel'}`);
-    
     try {
-        // Log request details for debugging
-        console.log('[RAG Worker - DEBUG MODE] Request method:', request.method);
-        console.log('[RAG Worker - DEBUG MODE] Request URL:', request.url);
-        
-        // Log headers (excluding sensitive ones)
-        const safeHeaders = Object.fromEntries(
-            Array.from(request.headers.entries())
-                .filter(([key]) => !key.includes('auth') && !key.includes('key') && !key.includes('token'))
-        );
-        console.log('[RAG Worker - DEBUG MODE] Request headers (safe):', safeHeaders);
-        
-        // Attempt to read the body as JSON directly
-        console.log('[RAG Worker - DEBUG MODE] Attempting request.json()...');
-        const body = await request.json();
-        console.log('[RAG Worker - DEBUG MODE] Successfully parsed body via request.json():', body);
+        // Log basic request properties WITHOUT reading the body
+        console.log(`[RAG Worker - DEBUG LEVEL 2] Request Method: ${request.method}`);
+        console.log(`[RAG Worker - DEBUG LEVEL 2] Request URL: ${request.url}`);
 
-        // If successful, return a success response for debugging
-        return NextResponse.json({ status: 'DEBUG_SUCCESS', received_body: body });
+        // Log headers (safely)
+        console.log('[RAG Worker - DEBUG LEVEL 2] Logging Request Headers:');
+        request.headers.forEach((value, key) => {
+             // Avoid logging potentially sensitive headers
+             if (!key.toLowerCase().includes('auth') && !key.toLowerCase().includes('key') && !key.toLowerCase().includes('token') && !key.toLowerCase().includes('signature')) {
+                 console.log(`  ${key}: ${value}`);
+             } else {
+                 console.log(`  ${key}: [REDACTED]`);
+             }
+        });
+
+        console.log('[RAG Worker - DEBUG LEVEL 2] Successfully logged request details without reading body.');
+
+        // Return a success response indicating basic invocation worked
+        return NextResponse.json({ status: 'DEBUG_SUCCESS_NO_BODY_READ' });
 
     } catch (error) {
-        console.error('[RAG Worker - DEBUG MODE] Error reading/parsing request body:', error);
-        if (error instanceof Error && error.message.includes('Body has already been read')) {
-            console.error('[RAG Worker - DEBUG MODE] Confirmed: Body was already read before handler could parse.');
-        }
-        // Return an error response for debugging
-        return NextResponse.json({ 
-            status: 'DEBUG_ERROR', 
-            error: error instanceof Error ? error.message : String(error) 
-        }, { status: 500 });
+        console.error('[RAG Worker - DEBUG LEVEL 2] Error accessing basic request properties:', error);
+        // Return an error response
+        return NextResponse.json({ status: 'DEBUG_ERROR_PRE_BODY_READ', error: error instanceof Error ? error.message : String(error) }, { status: 500 });
     } finally {
-        const endTime = new Date();
-        const duration = endTime.getTime() - startTime.getTime();
-        console.log(`[RAG Worker - DEBUG MODE] Handler completed at ${endTime.toISOString()} (Duration: ${duration}ms)`);
-        console.log(`[RAG Worker - DEBUG MODE] ============ HANDLER COMPLETED ============`);
+         const endTime = new Date();
+         const duration = endTime.getTime() - startTime.getTime();
+         console.log(`[RAG Worker - DEBUG LEVEL 2] Handler completed at ${endTime.toISOString()} (Duration: ${duration}ms)`);
+         console.log(`[RAG Worker - DEBUG LEVEL 2] ============ HANDLER COMPLETED ============`);
     }
 } 
