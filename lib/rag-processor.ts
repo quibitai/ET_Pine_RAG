@@ -65,7 +65,24 @@ async function extractTextWithGoogleDocumentAI(
     }
     
     // Initialize the Document AI client
-    const client = new DocumentProcessorServiceClient();
+    let client: DocumentProcessorServiceClient;
+    
+    // Try to use credentials from environment variable if available
+    if (typeof process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON === 'string' && 
+        process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON.trim() !== '') {
+      try {
+        const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+        client = new DocumentProcessorServiceClient({ credentials });
+        console.log('[Document AI] Initialized client with credentials from environment variable');
+      } catch (parseError) {
+        console.error('[Document AI] Failed to parse credentials from environment:', parseError);
+        console.log('[Document AI] Falling back to default authentication');
+        client = new DocumentProcessorServiceClient();
+      }
+    } else {
+      console.log('[Document AI] Using default authentication mechanism');
+      client = new DocumentProcessorServiceClient();
+    }
     
     // Download the file content from URL
     console.log('[Document AI] Downloading file from URL...');
