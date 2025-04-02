@@ -211,7 +211,11 @@ export async function processFileForRag({
 
     // Extract text using Google Cloud Document AI
     console.log(`[RAG Processor] Sending URL to Google Cloud Document AI for ${documentId}`);
-    const { fullText } = await extractTextWithGoogleDocumentAI(fileUrl, fileType);
+    
+    // Ensure fileType is always a string, default to application/octet-stream if not available
+    const mimeType = fileType || 'application/octet-stream';
+    
+    const { fullText } = await extractTextWithGoogleDocumentAI(fileUrl, mimeType);
     console.log(`[RAG Processor] Text extraction via Google Cloud Document AI completed for ${documentId}`);
 
     // Process text chunks
