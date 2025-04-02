@@ -107,17 +107,45 @@ export async function POST(request: Request): Promise<NextResponse> {
       const workerUrl = ensureCompleteUrl(rawWorkerUrl);
       console.log(`[Upload API] Complete Worker URL: ${workerUrl}`);
 
+      // Log QStash token presence (not the actual token for security)
+      const qstashToken = process.env.QSTASH_TOKEN;
+      console.log(`[Upload API] QStash token present?: ${!!qstashToken}`);
+      if (!qstashToken) {
+        console.error("[Upload API] QSTASH_TOKEN is missing! Cannot authenticate with QStash.");
+        await updateFileRagStatus({
+          id: documentId,
+          processingStatus: 'failed',
+          statusMessage: 'Server config error: QStash token missing.'
+        });
+        return NextResponse.json({
+          documentId,
+          url,
+          warning: 'File uploaded but processing cannot be queued (auth config error).'
+        });
+      }
+
+      // Prepare job payload
+      const jobPayload = {
+        documentId,
+        userId,
+      };
+      console.log(`[Upload API] Prepared job payload:`, JSON.stringify(jobPayload));
+
       console.log(`[Upload API] Enqueuing RAG job for document ${documentId} to worker URL: ${workerUrl}`);
       try {
+        // Log QStash client configuration before publishing
+        console.log('[Upload API] Using QStash client with configuration:', {
+          hasToken: !!process.env.QSTASH_TOKEN,
+        });
+
         // Await the publish call and capture the result
+        console.time('[Upload API] qstash_publish_call');
         const publishResult = await qstashClient.publishJSON({
           url: workerUrl,
-          body: {
-            documentId,
-            userId,
-          },
+          body: jobPayload,
           retries: 3,
         });
+        console.timeEnd('[Upload API] qstash_publish_call');
 
         // Log the raw result object from QStash publish
         console.log(`[Upload API] QStash publish result object:`, JSON.stringify(publishResult || {}));
@@ -125,6 +153,13 @@ export async function POST(request: Request): Promise<NextResponse> {
         // Check specifically for messageId, which indicates successful reception by QStash API
         if (publishResult?.messageId) {
           console.log(`[Upload API] Successfully enqueued RAG job for ${documentId}. QStash Message ID: ${publishResult.messageId}`);
+          
+          // Update status to show queued with messageId
+          await updateFileRagStatus({
+            id: documentId,
+            processingStatus: 'pending',
+            statusMessage: `Queued for processing (${publishResult.messageId})`
+          });
         } else {
           console.warn(`[Upload API] ⚠️ Enqueued RAG job for ${documentId}, but did NOT receive messageId in response. Job might not be processed by QStash.`);
           // Update status to failed if messageId is missing
@@ -148,23 +183,47 @@ export async function POST(request: Request): Promise<NextResponse> {
           console.error(`[Upload API] Queue Error Name: ${queueError.name}`);
           console.error(`[Upload API] Queue Error Message: ${queueError.message}`);
           console.error(`[Upload API] Queue Error Stack: ${queueError.stack}`);
+          
+          // Check for network errors specifically
+          if (queueError.name === 'FetchError' || queueError.message.includes('network') || queueError.message.includes('ENOTFOUND')) {
+            console.error('[Upload API] This appears to be a network connectivity issue reaching the QStash API');
+          }
+          // Check for auth errors
+          else if (queueError.message.includes('unauthorized') || queueError.message.includes('forbidden') || queueError.message.includes('401') || queueError.message.includes('403')) {
+            console.error('[Upload API] This appears to be an authentication/authorization issue with QStash');
+            console.error('[Upload API] Please verify your QSTASH_TOKEN is correct and not expired');
+          }
         } else {
           console.error(`[Upload API] Queue Error (raw):`, queueError);
         }
         console.error(`[Upload API] ------------------------------------------------------`);
 
-        // Update document status to failed
+        // Update document status to failed with specific error type hints
+        let errorMessage = 'Failed to queue processing job';
+        if (queueError instanceof Error) {
+          if (queueError.name === 'FetchError' || queueError.message.includes('network')) {
+            errorMessage += ': Network error connecting to QStash';
+          } else if (queueError.message.includes('unauthorized') || queueError.message.includes('forbidden')) {
+            errorMessage += ': Authentication failed with QStash';
+          } else {
+            errorMessage += `: ${queueError.message}`;
+          }
+        } else {
+          errorMessage += `: ${String(queueError)}`;
+        }
+        
         await updateFileRagStatus({
           id: documentId,
           processingStatus: 'failed',
-          statusMessage: `Failed to queue processing job: ${queueError instanceof Error ? queueError.message : String(queueError)}`
+          statusMessage: errorMessage
         });
 
         // Return warning in the response
         return NextResponse.json({
           documentId,
           url,
-          warning: 'File uploaded but processing queue failed'
+          warning: 'File uploaded but processing queue failed',
+          error: errorMessage
         });
       }
     }
@@ -177,8 +236,13 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   } catch (error) {
     console.error('[Upload API] Error:', error);
+    if (error instanceof Error) {
+      console.error('[Upload API] Error name:', error.name);
+      console.error('[Upload API] Error message:', error.message);
+      console.error('[Upload API] Error stack:', error.stack);
+    }
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

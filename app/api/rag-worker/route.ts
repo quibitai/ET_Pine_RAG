@@ -1,49 +1,126 @@
 import { NextResponse } from 'next/server';
 import { processFileForRag } from '@/lib/rag-processor';
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs"; // Use the App Router wrapper
+import { getDocumentById } from '@/lib/db/queries';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes
 
 // Define the main handler logic separately
 async function handler(request: Request) {
-  // Add startup confirmation log
-  console.log(`[RAG Worker] Handler invoked at ${new Date().toISOString()}`);
-  console.log('[RAG Worker] Signature already verified by wrapper.');
+  // Add startup confirmation log with timestamp for tracking in logs
+  const startTime = new Date();
+  console.log(`[RAG Worker] ============ HANDLER INVOKED ============`);
+  console.log(`[RAG Worker] Handler started at ${startTime.toISOString()}`);
+  console.log(`[RAG Worker] QStash signature verified by wrapper`);
 
-  // Log request details (optional, as verification is done)
-  console.log('[RAG Worker] Request headers:', Object.fromEntries(request.headers.entries()));
-  console.log('[RAG Worker] Request method:', request.method);
-  console.log('[RAG Worker] Request URL:', request.url);
+  // Log environment awareness
+  console.log(`[RAG Worker] Running in environment: ${process.env.NODE_ENV || 'unknown'}`);
+  console.log(`[RAG Worker] Vercel environment: ${process.env.VERCEL_ENV || 'not Vercel'}`);
+
+  // Log request details
+  try {
+    console.log('[RAG Worker] Request method:', request.method);
+    console.log('[RAG Worker] Request URL:', request.url);
+    
+    // Log headers without sensitive information
+    const safeHeaders = Object.fromEntries(
+      Array.from(request.headers.entries())
+        .filter(([key]) => !key.includes('auth') && !key.includes('key') && !key.includes('token'))
+    );
+    console.log('[RAG Worker] Request headers (safe):', safeHeaders);
+  } catch (headerError) {
+    console.error('[RAG Worker] Error accessing request details:', headerError);
+  }
 
   try {
-    // Parse the job payload (body has already been read by the wrapper/Next.js)
-    const body = await request.json();
+    // Parse the job payload
+    let body;
+    try {
+      body = await request.json();
+      console.log('[RAG Worker] Successfully parsed request body');
+    } catch (parseError) {
+      console.error('[RAG Worker] Failed to parse request body:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body', details: parseError instanceof Error ? parseError.message : String(parseError) },
+        { status: 400 }
+      );
+    }
+    
     console.log('[RAG Worker] Parsed request body:', body);
 
+    // Extract and validate required fields
     const { documentId, userId } = body;
 
-    if (!documentId || !userId) {
-      console.error('[RAG Worker] Invalid job payload:', body);
+    if (!documentId) {
+      console.error('[RAG Worker] Missing documentId in payload:', body);
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required field: documentId' },
+        { status: 400 }
+      );
+    }
+    
+    if (!userId) {
+      console.error('[RAG Worker] Missing userId in payload:', body);
+      return NextResponse.json(
+        { error: 'Missing required field: userId' },
         { status: 400 }
       );
     }
 
-    console.log(`[RAG Worker] Processing document ${documentId} for user ${userId}`);
-    const success = await processFileForRag({ documentId, userId });
+    // Verify document exists before processing
+    try {
+      console.log(`[RAG Worker] Verifying document ${documentId} exists in database`);
+      const document = await getDocumentById({ id: documentId });
+      
+      if (!document) {
+        console.error(`[RAG Worker] Document ${documentId} not found in database`);
+        return NextResponse.json(
+          { error: `Document ${documentId} not found` },
+          { status: 404 }
+        );
+      }
+      
+      console.log(`[RAG Worker] Document verification successful: ${document.fileName} (${document.fileType})`);
+    } catch (dbError) {
+      console.error(`[RAG Worker] Database error while verifying document:`, dbError);
+      // Continue processing - this was just a verification step
+    }
 
-    if (success) {
-      console.log(`[RAG Worker] Successfully processed document ${documentId}`);
+    // Process the document
+    console.log(`[RAG Worker] Starting processing for document ${documentId} (user: ${userId})`);
+    console.time(`[RAG Worker] document_processing_${documentId}`);
+    
+    try {
+      const success = await processFileForRag({ documentId, userId });
+      console.timeEnd(`[RAG Worker] document_processing_${documentId}`);
+      
+      if (success) {
+        const processingTime = new Date().getTime() - startTime.getTime();
+        console.log(`[RAG Worker] Successfully processed document ${documentId} in ${processingTime}ms`);
+        return NextResponse.json(
+          { 
+            message: 'Processing completed successfully',
+            processingTimeMs: processingTime
+          },
+          { status: 200 }
+        );
+      } else {
+        console.error(`[RAG Worker] Processing returned false for document ${documentId}`);
+        return NextResponse.json(
+          { error: 'Processing failed' },
+          { status: 500 }
+        );
+      }
+    } catch (processingError) {
+      console.timeEnd(`[RAG Worker] document_processing_${documentId}`);
+      console.error(`[RAG Worker] Error during document processing:`, processingError);
+      
       return NextResponse.json(
-        { message: 'Processing completed successfully' },
-        { status: 200 }
-      );
-    } else {
-      console.error(`[RAG Worker] Processing failed for document ${documentId}`);
-      return NextResponse.json(
-        { error: 'Processing failed' },
+        { 
+          error: 'Processing error', 
+          details: processingError instanceof Error ? processingError.message : String(processingError)
+        },
         { status: 500 }
       );
     }
@@ -55,6 +132,7 @@ async function handler(request: Request) {
       console.error('[RAG Worker] Error message:', error.message);
       console.error('[RAG Worker] Error stack:', error.stack);
     }
+    
     return NextResponse.json(
       {
         error: 'Internal server error',
@@ -62,6 +140,12 @@ async function handler(request: Request) {
       },
       { status: 500 }
     );
+  } finally {
+    const endTime = new Date();
+    const duration = endTime.getTime() - startTime.getTime();
+    console.log(`[RAG Worker] Handler completed at ${endTime.toISOString()}`);
+    console.log(`[RAG Worker] Total handler duration: ${duration}ms`);
+    console.log(`[RAG Worker] ============ HANDLER COMPLETED ============`);
   }
 }
 
