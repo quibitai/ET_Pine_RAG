@@ -62,8 +62,19 @@ async function extractTextWithUnstructured(
   apiKey: string
 ): Promise<{ elements: UnstructuredElement[]; fullText: string }> {
   console.log(`[Unstructured] Starting extraction for URL: ${fileUrl.split('?')[0]}`);
-  const apiUrl = "https://api.unstructured.io/general/v0/general";
+  
+  // Primary and fallback API endpoints
+  const apiHostname = "api.unstructured.io";
+  // IP address fallback (current as of time of implementation, might change)
+  const apiFallbackIP = "3.218.0.138"; // IP for api.unstructured.io as of implementation
+  const apiPath = "/general/v0/general";
+  
+  let apiUrl = `https://${apiHostname}${apiPath}`;
+  let usedFallbackIP = false;
 
+  // Log DNS resolution attempt
+  console.log(`[Unstructured] Attempting to resolve DNS for ${apiHostname}...`);
+  
   const requestData = {
     url: fileUrl,
     strategy: "auto",
@@ -71,39 +82,183 @@ async function extractTextWithUnstructured(
   };
 
   try {
+    // First, test API availability with a simple HEAD request
+    let dnsResolutionFailed = false;
+    
+    try {
+      console.log(`[Unstructured] Testing API availability with HEAD request...`);
+      const testResponse = await fetch(`https://${apiHostname}`, {
+        method: "HEAD",
+        headers: { "User-Agent": "Vercel Function Connectivity Test" },
+        // Add a reasonable timeout
+        signal: AbortSignal.timeout(5000) // 5 second timeout for the test
+      });
+      console.log(`[Unstructured] API availability test result: ${testResponse.status} ${testResponse.statusText}`);
+    } catch (testError) {
+      // Log but don't fail - this is just a pre-check
+      console.error(`[Unstructured] API availability test failed:`, testError);
+      const errorObj = testError as { name?: string, code?: string, cause?: Error };
+      
+      if (errorObj.name === 'AbortError') {
+        console.error(`[Unstructured] API availability test timed out after 5 seconds`);
+      } else if (errorObj.code === 'ENOTFOUND') {
+        console.error(`[Unstructured] DNS resolution failed - Cannot resolve ${apiHostname}`);
+        console.error(`[Unstructured] Will try fallback to direct IP address: ${apiFallbackIP}`);
+        dnsResolutionFailed = true;
+        
+        // Switch to IP address fallback
+        apiUrl = `https://${apiFallbackIP}${apiPath}`;
+        usedFallbackIP = true;
+        
+        // Test the IP fallback
+        try {
+          console.log(`[Unstructured] Testing fallback IP connectivity...`);
+          const ipTestResponse = await fetch(`https://${apiFallbackIP}`, {
+            method: "HEAD",
+            headers: { 
+              "User-Agent": "Vercel Function Connectivity Test",
+              // Add Host header to handle TLS certificate validation
+              "Host": apiHostname 
+            },
+            signal: AbortSignal.timeout(5000)
+          });
+          console.log(`[Unstructured] Fallback IP test result: ${ipTestResponse.status} ${ipTestResponse.statusText}`);
+        } catch (ipTestError) {
+          console.error(`[Unstructured] Fallback IP test also failed:`, ipTestError);
+          // Continue anyway - this is just a pre-check
+        }
+      }
+    }
+
+    // Proceed with the main API call
     console.time('unstructured_api_call');
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
+    console.log(`[Unstructured] Making POST request to ${apiUrl}`);
+    
+    // Create an AbortController for the main request with a longer timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+    
+    try {
+      // Prepare headers including Host header if using IP fallback
+      const headers: Record<string, string> = {
         "accept": "application/json",
         "Content-Type": "application/json",
         "unstructured-api-key": apiKey,
-      },
-      body: JSON.stringify(requestData),
-    });
-    console.timeEnd('unstructured_api_call');
+      };
+      
+      // Add Host header if using IP fallback to handle TLS certificate validation
+      if (usedFallbackIP) {
+        headers["Host"] = apiHostname;
+      }
+      
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify(requestData),
+        signal: controller.signal
+      });
+      
+      // Clear the timeout since the request completed
+      clearTimeout(timeoutId);
+      
+      console.timeEnd('unstructured_api_call');
+      
+      console.log(`[Unstructured] Response status: ${response.status} ${response.statusText}`);
+      console.log(`[Unstructured] Response headers:`, Object.fromEntries(response.headers.entries()));
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`[Unstructured] API Error ${response.status}: ${errorBody}`);
-      throw new Error(`Unstructured API failed with status ${response.status}: ${errorBody}`);
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`[Unstructured] API Error ${response.status}: ${errorBody}`);
+        throw new Error(`Unstructured API failed with status ${response.status}: ${errorBody}`);
+      }
+
+      const elements: UnstructuredElement[] = await response.json();
+      console.log(`[Unstructured] Successfully processed. Received ${elements.length} elements.`);
+
+      if (!Array.isArray(elements)) {
+        console.error("[Unstructured] API response was not an array:", elements);
+        throw new Error("Invalid response format from Unstructured API");
+      }
+
+      const fullText = elements.map(el => el.text || '').join('\n\n');
+      console.log(`[Unstructured] Total extracted text length: ${fullText.length}`);
+
+      return { elements, fullText };
+    } catch (fetchError) {
+      // Handle fetch-specific errors
+      clearTimeout(timeoutId);
+      const errorObj = fetchError as { name?: string, code?: string, cause?: Error };
+      
+      if (errorObj.name === 'AbortError') {
+        console.error(`[Unstructured] Request timed out after 60 seconds`);
+        throw new Error(`Unstructured API request timed out after 60 seconds`);
+      } else if (errorObj.code === 'ENOTFOUND') {
+        if (!usedFallbackIP) {
+          console.error(`[Unstructured] Primary DNS resolution failed - Cannot resolve ${apiHostname}`);
+          console.error(`[Unstructured] Attempting to use IP fallback for retry...`);
+          
+          // Switch to IP address fallback
+          apiUrl = `https://${apiFallbackIP}${apiPath}`;
+          usedFallbackIP = true;
+          
+          // Try again with the IP fallback
+          console.log(`[Unstructured] Retrying request with IP address ${apiFallbackIP}...`);
+          
+          const fallbackController = new AbortController();
+          const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 60000);
+          
+          try {
+            const fallbackResponse = await fetch(apiUrl, {
+              method: "POST",
+              headers: {
+                "accept": "application/json",
+                "Content-Type": "application/json",
+                "unstructured-api-key": apiKey,
+                "Host": apiHostname // Add Host header for TLS certificate validation
+              },
+              body: JSON.stringify(requestData),
+              signal: fallbackController.signal
+            });
+            
+            clearTimeout(fallbackTimeoutId);
+            
+            if (!fallbackResponse.ok) {
+              const fallbackErrorBody = await fallbackResponse.text();
+              throw new Error(`Fallback API call failed with status ${fallbackResponse.status}: ${fallbackErrorBody}`);
+            }
+            
+            const fallbackElements: UnstructuredElement[] = await fallbackResponse.json();
+            console.log(`[Unstructured] Fallback API call successful! Received ${fallbackElements.length} elements.`);
+            
+            const fallbackFullText = fallbackElements.map(el => el.text || '').join('\n\n');
+            return { elements: fallbackElements, fullText: fallbackFullText };
+          } catch (fallbackError) {
+            clearTimeout(fallbackTimeoutId);
+            console.error(`[Unstructured] Fallback API call also failed:`, fallbackError);
+            throw new Error(`Both primary and fallback API calls failed. Original error: ${(fetchError as Error).message || String(fetchError)}, Fallback error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+          }
+        } else {
+          console.error(`[Unstructured] Both hostname and IP fallback failed - this is a critical network issue`);
+          throw new Error(`Critical network issue: Cannot connect to Unstructured API via hostname or IP address. This is likely a network connectivity issue in the Vercel environment.`);
+        }
+      }
+      
+      // Re-throw the original error
+      throw fetchError;
     }
-
-    const elements: UnstructuredElement[] = await response.json();
-    console.log(`[Unstructured] Successfully processed. Received ${elements.length} elements.`);
-
-    if (!Array.isArray(elements)) {
-      console.error("[Unstructured] API response was not an array:", elements);
-      throw new Error("Invalid response format from Unstructured API");
-    }
-
-    const fullText = elements.map(el => el.text || '').join('\n\n');
-    console.log(`[Unstructured] Total extracted text length: ${fullText.length}`);
-
-    return { elements, fullText };
-
   } catch (error) {
     console.error("[Unstructured] Failed to process document:", error);
+    // Add more context to the error
+    if (error instanceof Error) {
+      console.error("[Unstructured] Error name:", error.name);
+      console.error("[Unstructured] Error message:", error.message);
+      console.error("[Unstructured] Error stack:", error.stack);
+      
+      // Create a more descriptive error
+      const enhancedError = new Error(`Unstructured API error: ${error.message}`);
+      enhancedError.stack = error.stack;
+      throw enhancedError;
+    }
     throw error;
   }
 }
