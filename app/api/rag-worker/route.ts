@@ -70,8 +70,8 @@ export async function GET(request: Request) {
 
 // Add test endpoint to diagnose if the worker can handle requests without QStash
 // Use a special header for security since we're bypassing signature verification
-export async function OPTIONS(request: Request) {
-  console.log("[RAG Worker] Test POST endpoint invoked (OPTIONS method)");
+export async function PATCH(request: Request) {
+  console.log("[RAG Worker] Test endpoint invoked (PATCH method)");
   
   // Check for diagnostic test header to ensure this isn't called accidentally
   if (request.headers.get('x-diagnostic-test') !== 'rag-worker-test-123') {
