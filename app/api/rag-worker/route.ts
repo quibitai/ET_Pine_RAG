@@ -6,6 +6,68 @@ import { getDocumentById } from '@/lib/db/queries';
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes
 
+// Add health check endpoint for diagnostics
+export async function GET(request: Request) {
+  console.log("[RAG Worker] Health check invoked");
+  
+  // Basic connectivity diagnostic test
+  let connectivityResults = {
+    google: { success: false, status: null as number | null, error: null as string | null },
+    unstructured: { success: false, status: null as number | null, error: null as string | null }
+  };
+  
+  try {
+    console.log('[RAG Worker] Testing connectivity to google.com...');
+    const googleTest = await fetch('https://google.com', { 
+      method: 'HEAD', 
+      signal: AbortSignal.timeout(5000)
+    });
+    connectivityResults.google = { 
+      success: true, 
+      status: googleTest.status,
+      error: null
+    };
+  } catch (error) {
+    connectivityResults.google.error = error instanceof Error ? error.message : String(error);
+    console.error('[RAG Worker] Google connectivity test failed:', error);
+  }
+  
+  try {
+    console.log('[RAG Worker] Testing connectivity to api.unstructured.io...');
+    const unstructuredTest = await fetch('https://api.unstructured.io', { 
+      method: 'HEAD', 
+      signal: AbortSignal.timeout(5000),
+      headers: { 'User-Agent': 'Vercel Function Diagnostic' }
+    });
+    connectivityResults.unstructured = { 
+      success: true, 
+      status: unstructuredTest.status,
+      error: null
+    };
+  } catch (error) {
+    connectivityResults.unstructured.error = error instanceof Error ? error.message : String(error);
+    console.error('[RAG Worker] Unstructured API connectivity test failed:', error);
+  }
+  
+  // Return environment and connectivity information
+  return NextResponse.json({
+    status: "ok",
+    message: "RAG worker is operational",
+    timestamp: new Date().toISOString(),
+    environment: {
+      runtime: process.env.NODE_ENV || "unknown",
+      vercel_env: process.env.VERCEL_ENV || "not Vercel",
+      region: process.env.VERCEL_REGION || "unknown"
+    },
+    connectivity: connectivityResults,
+    memory: process.memoryUsage ? {
+      rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + "MB",
+      heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + "MB",
+      heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + "MB",
+    } : "unavailable"
+  });
+}
+
 // Define the main handler logic separately
 async function handler(request: Request) {
   // Add startup confirmation log with timestamp for tracking in logs
@@ -17,6 +79,7 @@ async function handler(request: Request) {
   // Log environment awareness
   console.log(`[RAG Worker] Running in environment: ${process.env.NODE_ENV || 'unknown'}`);
   console.log(`[RAG Worker] Vercel environment: ${process.env.VERCEL_ENV || 'not Vercel'}`);
+  console.log(`[RAG Worker] Vercel region: ${process.env.VERCEL_REGION || 'unknown'}`);
 
   // Basic connectivity diagnostic test
   try {
