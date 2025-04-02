@@ -65,8 +65,9 @@ async function extractTextWithUnstructured(
   
   // Primary and fallback API endpoints
   const apiHostname = "api.unstructured.io";
-  // IP address fallback (current as of time of implementation, might change)
-  const apiFallbackIP = "3.218.0.138"; // IP for api.unstructured.io as of implementation
+  // IP address fallbacks (current as of latest DNS lookup)
+  const apiFallbackIPs = ["4.227.53.74", "48.216.143.214"]; // Current IPs for api.unstructured.io
+  const apiFallbackIP = apiFallbackIPs[0]; // Use the first IP as primary fallback
   const apiPath = "/general/v0/general";
   
   let apiUrl = `https://${apiHostname}${apiPath}`;
@@ -187,7 +188,32 @@ async function extractTextWithUnstructured(
     } catch (fetchError) {
       // Handle fetch-specific errors
       clearTimeout(timeoutId);
-      const errorObj = fetchError as { name?: string, code?: string, cause?: Error };
+      
+      // Add detailed logging for fetch errors including 'cause' property
+      console.error(`[Unstructured] Fetch error details for ${apiUrl}:`, fetchError);
+      
+      // Define NetworkError type for better typing
+      type NetworkError = { 
+        name?: string; 
+        code?: string; 
+        cause?: any;
+        message?: string;
+        stack?: string;
+        hostname?: string;
+        syscall?: string;
+      };
+      
+      const errorObj = fetchError as NetworkError;
+      
+      // Log the cause property for detailed network errors
+      if ('cause' in errorObj && errorObj.cause) {
+        console.error(`[Unstructured] Fetch Error Cause Details:`, JSON.stringify(errorObj.cause, null, 2));
+        // Try to access common network error properties
+        const causeObj = errorObj.cause as NetworkError;
+        if(causeObj.code) console.error(`[Unstructured] Cause Code: ${causeObj.code}`);
+        if(causeObj.syscall) console.error(`[Unstructured] Cause Syscall: ${causeObj.syscall}`);
+        if(causeObj.hostname) console.error(`[Unstructured] Cause Hostname: ${causeObj.hostname}`);
+      }
       
       if (errorObj.name === 'AbortError') {
         console.error(`[Unstructured] Request timed out after 60 seconds`);
@@ -195,48 +221,64 @@ async function extractTextWithUnstructured(
       } else if (errorObj.code === 'ENOTFOUND') {
         if (!usedFallbackIP) {
           console.error(`[Unstructured] Primary DNS resolution failed - Cannot resolve ${apiHostname}`);
-          console.error(`[Unstructured] Attempting to use IP fallback for retry...`);
+          console.error(`[Unstructured] Attempting to use IP fallbacks for retry...`);
           
-          // Switch to IP address fallback
-          apiUrl = `https://${apiFallbackIP}${apiPath}`;
-          usedFallbackIP = true;
-          
-          // Try again with the IP fallback
-          console.log(`[Unstructured] Retrying request with IP address ${apiFallbackIP}...`);
-          
-          const fallbackController = new AbortController();
-          const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 60000);
-          
-          try {
-            const fallbackResponse = await fetch(apiUrl, {
-              method: "POST",
-              headers: {
-                "accept": "application/json",
-                "Content-Type": "application/json",
-                "unstructured-api-key": apiKey,
-                "Host": apiHostname // Add Host header for TLS certificate validation
-              },
-              body: JSON.stringify(requestData),
-              signal: fallbackController.signal
-            });
+          // Try each fallback IP in sequence
+          for (let i = 0; i < apiFallbackIPs.length; i++) {
+            const currentFallbackIP = apiFallbackIPs[i];
+            apiUrl = `https://${currentFallbackIP}${apiPath}`;
+            usedFallbackIP = true;
             
-            clearTimeout(fallbackTimeoutId);
+            // Try with this fallback IP
+            console.log(`[Unstructured] Retrying request with IP address ${currentFallbackIP} (attempt ${i+1}/${apiFallbackIPs.length})...`);
             
-            if (!fallbackResponse.ok) {
-              const fallbackErrorBody = await fallbackResponse.text();
-              throw new Error(`Fallback API call failed with status ${fallbackResponse.status}: ${fallbackErrorBody}`);
+            const fallbackController = new AbortController();
+            const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 60000);
+            
+            try {
+              const fallbackResponse = await fetch(apiUrl, {
+                method: "POST",
+                headers: {
+                  "accept": "application/json",
+                  "Content-Type": "application/json",
+                  "unstructured-api-key": apiKey,
+                  "Host": apiHostname // Add Host header for TLS certificate validation
+                },
+                body: JSON.stringify(requestData),
+                signal: fallbackController.signal
+              });
+              
+              clearTimeout(fallbackTimeoutId);
+              
+              if (!fallbackResponse.ok) {
+                const fallbackErrorBody = await fallbackResponse.text();
+                console.error(`[Unstructured] Fallback API call to ${currentFallbackIP} failed with status ${fallbackResponse.status}: ${fallbackErrorBody}`);
+                // Continue to next IP if available
+                continue;
+              }
+              
+              // Success with this fallback IP
+              console.log(`[Unstructured] Fallback API call to ${currentFallbackIP} succeeded!`);
+              const fallbackElements: UnstructuredElement[] = await fallbackResponse.json();
+              console.log(`[Unstructured] Received ${fallbackElements.length} elements.`);
+              
+              const fallbackFullText = fallbackElements.map(el => el.text || '').join('\n\n');
+              return { elements: fallbackElements, fullText: fallbackFullText };
+            } catch (fallbackError) {
+              clearTimeout(fallbackTimeoutId);
+              console.error(`[Unstructured] Fallback API call to ${currentFallbackIP} failed:`, fallbackError);
+              // Log detailed error for this fallback attempt
+              if (fallbackError instanceof Error && 'cause' in fallbackError && fallbackError.cause) {
+                console.error(`[Unstructured] Fallback Error Cause for ${currentFallbackIP}:`, 
+                  JSON.stringify(fallbackError.cause, null, 2));
+              }
+              // Continue to next IP if available
             }
-            
-            const fallbackElements: UnstructuredElement[] = await fallbackResponse.json();
-            console.log(`[Unstructured] Fallback API call successful! Received ${fallbackElements.length} elements.`);
-            
-            const fallbackFullText = fallbackElements.map(el => el.text || '').join('\n\n');
-            return { elements: fallbackElements, fullText: fallbackFullText };
-          } catch (fallbackError) {
-            clearTimeout(fallbackTimeoutId);
-            console.error(`[Unstructured] Fallback API call also failed:`, fallbackError);
-            throw new Error(`Both primary and fallback API calls failed. Original error: ${(fetchError as Error).message || String(fetchError)}, Fallback error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
           }
+          
+          // If we get here, all fallbacks failed
+          console.error(`[Unstructured] All fallback IPs failed - this is a critical network issue`);
+          throw new Error(`Failed to connect to Unstructured API after trying hostname and ${apiFallbackIPs.length} fallback IPs.`);
         } else {
           console.error(`[Unstructured] Both hostname and IP fallback failed - this is a critical network issue`);
           throw new Error(`Critical network issue: Cannot connect to Unstructured API via hostname or IP address. This is likely a network connectivity issue in the Vercel environment.`);
@@ -254,12 +296,28 @@ async function extractTextWithUnstructured(
       console.error("[Unstructured] Error message:", error.message);
       console.error("[Unstructured] Error stack:", error.stack);
       
+      // Log the 'cause' property for detailed DNS/network errors
+      if ('cause' in error && error.cause) {
+        // Create a more specific type that includes hostname
+        type NetworkError = NodeJS.ErrnoException & { 
+          hostname?: string; 
+        };
+        
+        const causeError = error.cause as NetworkError; // Type assertion
+        console.error(`[Unstructured] Error Cause Details:`, JSON.stringify(error.cause, null, 2));
+        if(causeError.code) console.error(`[Unstructured] Cause Code: ${causeError.code}`); // Should be ENOTFOUND
+        if(causeError.syscall) console.error(`[Unstructured] Cause Syscall: ${causeError.syscall}`); // e.g., 'getaddrinfo'
+        if(causeError.hostname) console.error(`[Unstructured] Cause Hostname: ${causeError.hostname}`); // The hostname that failed lookup
+      }
+      
       // Create a more descriptive error
       const enhancedError = new Error(`Unstructured API error: ${error.message}`);
       enhancedError.stack = error.stack;
       throw enhancedError;
+    } else {
+      console.error(`[Unstructured] Caught non-Error object:`, JSON.stringify(error, null, 2));
+      throw error;
     }
-    throw error;
   }
 }
 
