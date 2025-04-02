@@ -121,7 +121,16 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
           console.log(`[Attachment Fix] Extracted document ID from name: ${documentId}`);
         }
         
-        // Method 3: Check if URL contains another type of document identifier
+        // Method 3: Check if URL contains a document ID in Vercel Blob URL format
+        if (!documentId && attachment.url) {
+          const blobMatch = attachment.url.match(/vercel-blob\.com\/.+?\/([^\/]+)/i);
+          if (blobMatch && blobMatch[1]) {
+            documentId = blobMatch[1];
+            console.log(`[Attachment Fix] Extracted document ID from Vercel Blob URL: ${documentId}`);
+          }
+        }
+        
+        // Method 4: Check if URL contains another type of document identifier
         if (!documentId && attachment.url) {
           // Try to extract the last path segment which could be a document identifier
           const pathSegments = attachment.url.split('/').filter(Boolean);
@@ -195,9 +204,12 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
           else if (filename.endsWith('.html') || filename.endsWith('.htm')) inferredContentType = 'text/html';
           else if (filename.endsWith('.json')) inferredContentType = 'application/json';
           else if (filename.endsWith('.xml')) inferredContentType = 'application/xml';
+          else if (attachment.url?.includes('.png')) inferredContentType = 'image/png';  
+          else if (attachment.url?.includes('.jpg') || attachment.url?.includes('.jpeg')) inferredContentType = 'image/jpeg';
+          else if (attachment.url?.includes('.pdf')) inferredContentType = 'application/pdf';
           else inferredContentType = 'application/octet-stream'; // Last resort fallback
           
-          console.log(`[Attachment Fix] Inferred content type from filename: ${inferredContentType}`);
+          console.log(`[Attachment Fix] Inferred content type from name/URL: ${inferredContentType}`);
         }
         
         console.log(`[Attachment Fix] Final result: Name='${filename || 'N/A'}', Original='${attachment.contentType || ''}', Final='${inferredContentType}'`);
