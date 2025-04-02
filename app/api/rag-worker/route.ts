@@ -18,6 +18,42 @@ async function handler(request: Request) {
   console.log(`[RAG Worker] Running in environment: ${process.env.NODE_ENV || 'unknown'}`);
   console.log(`[RAG Worker] Vercel environment: ${process.env.VERCEL_ENV || 'not Vercel'}`);
 
+  // Basic connectivity diagnostic test
+  try {
+    console.log('[RAG Worker] DIAGNOSTIC: Testing basic outbound connectivity to google.com...');
+    // Use HEAD request for efficiency, with a short timeout
+    const testRes = await fetch('https://google.com', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
+    console.log(`[RAG Worker] DIAGNOSTIC: Basic connectivity test to google.com status: ${testRes.status}`);
+    
+    // Also test connectivity to api.unstructured.io directly for comparison
+    try {
+      console.log('[RAG Worker] DIAGNOSTIC: Testing connectivity to api.unstructured.io...');
+      const unstructuredRes = await fetch('https://api.unstructured.io', { 
+        method: 'HEAD', 
+        signal: AbortSignal.timeout(5000),
+        headers: { 'User-Agent': 'Vercel Function Diagnostic' }
+      });
+      console.log(`[RAG Worker] DIAGNOSTIC: Unstructured API test status: ${unstructuredRes.status}`);
+    } catch (unstructuredError) {
+      console.error('[RAG Worker] DIAGNOSTIC: Unstructured API connectivity test FAILED:', unstructuredError);
+      if (unstructuredError instanceof Error && 'cause' in unstructuredError && unstructuredError.cause) {
+        const causeError = unstructuredError.cause as NodeJS.ErrnoException & { hostname?: string };
+        console.error(`[RAG Worker] DIAGNOSTIC: Unstructured Test Error Cause: Code=${causeError.code}, Syscall=${causeError.syscall}, Hostname=${causeError.hostname || 'unknown'}`);
+      }
+    }
+  } catch (connectivityError) {
+    console.error('[RAG Worker] DIAGNOSTIC: Basic outbound connectivity test FAILED:', connectivityError);
+    // Log the specific error cause if available
+    if (connectivityError instanceof Error && 'cause' in connectivityError && connectivityError.cause) {
+      const causeError = connectivityError.cause as NodeJS.ErrnoException & { hostname?: string };
+      console.error(`[RAG Worker] DIAGNOSTIC: Connectivity Test Error Cause: Code=${causeError.code}, Syscall=${causeError.syscall}, Hostname=${causeError.hostname || 'unknown'}`);
+    }
+    // Consider stopping further execution if basic connectivity fails
+    // Uncomment to block processing when basic connectivity fails
+    // return NextResponse.json({ error: 'Basic network connectivity failed' }, { status: 500 });
+  }
+  // --- End of Diagnostic Test ---
+
   // Log request details
   try {
     console.log('[RAG Worker] Request method:', request.method);
