@@ -65,24 +65,28 @@ async function extractTextWithGoogleDocumentAI(
     }
     
     // Initialize the Document AI client
-    let client: DocumentProcessorServiceClient;
-    
-    // Try to use credentials from environment variable if available
-    if (typeof process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON === 'string' && 
-        process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON.trim() !== '') {
+    let clientOptions = {};
+    const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON;
+
+    if (credentialsJson) {
       try {
-        const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
-        client = new DocumentProcessorServiceClient({ credentials });
-        console.log('[Document AI] Initialized client with credentials from environment variable');
-      } catch (parseError) {
-        console.error('[Document AI] Failed to parse credentials from environment:', parseError);
-        console.log('[Document AI] Falling back to default authentication');
-        client = new DocumentProcessorServiceClient();
+        // Parse the JSON string from the environment variable
+        const credentials = JSON.parse(credentialsJson);
+        // Prepare the options object for the client constructor
+        clientOptions = { credentials };
+        console.log('[Document AI] Initializing client using credentials from GOOGLE_CREDENTIALS_JSON env var.');
+      } catch (e) {
+        console.error('[Document AI] Failed to parse GOOGLE_CREDENTIALS_JSON:', e);
+        console.log('[Document AI] Falling back to default credential mechanism (which might fail on Vercel).');
+        // Ensure GOOGLE_CREDENTIALS_JSON is correctly set in Vercel environment variables
       }
     } else {
-      console.log('[Document AI] Using default authentication mechanism');
-      client = new DocumentProcessorServiceClient();
+      console.warn('[Document AI] GOOGLE_CREDENTIALS_JSON env var not set. Attempting default credentials (may fail on Vercel).');
+      // Default ADC will likely fail on Vercel if GOOGLE_APPLICATION_CREDENTIALS is not a valid path
     }
+
+    // Initialize the client with the determined options
+    const client = new DocumentProcessorServiceClient(clientOptions);
     
     // Download the file content from URL
     console.log('[Document AI] Downloading file from URL...');

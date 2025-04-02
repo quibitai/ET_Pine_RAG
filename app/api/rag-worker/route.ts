@@ -12,8 +12,7 @@ export async function GET(request: Request) {
   
   // Basic connectivity diagnostic test
   let connectivityResults = {
-    google: { success: false, status: null as number | null, error: null as string | null },
-    documentai: { success: false, status: null as number | null, error: null as string | null }
+    google: { success: false, status: null as number | null, error: null as string | null }
   };
   
   try {
@@ -30,23 +29,6 @@ export async function GET(request: Request) {
   } catch (error) {
     connectivityResults.google.error = error instanceof Error ? error.message : String(error);
     console.error('[RAG Worker] Google connectivity test failed:', error);
-  }
-  
-  try {
-    console.log('[RAG Worker] Testing connectivity to documentai.googleapis.com...');
-    const documentaiTest = await fetch('https://documentai.googleapis.com', { 
-      method: 'HEAD', 
-      signal: AbortSignal.timeout(5000),
-      headers: { 'User-Agent': 'Vercel Function Diagnostic' }
-    });
-    connectivityResults.documentai = { 
-      success: true, 
-      status: documentaiTest.status,
-      error: null
-    };
-  } catch (error) {
-    connectivityResults.documentai.error = error instanceof Error ? error.message : String(error);
-    console.error('[RAG Worker] Document AI API connectivity test failed:', error);
   }
   
   // Return environment and connectivity information
@@ -119,23 +101,6 @@ async function handler(request: Request) {
     // Use HEAD request for efficiency, with a short timeout
     const testRes = await fetch('https://google.com', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
     console.log(`[RAG Worker] DIAGNOSTIC: Basic connectivity test to google.com status: ${testRes.status}`);
-    
-    // Also test connectivity to Document AI API directly for comparison
-    try {
-      console.log('[RAG Worker] DIAGNOSTIC: Testing connectivity to documentai.googleapis.com...');
-      const documentaiRes = await fetch('https://documentai.googleapis.com', { 
-        method: 'HEAD', 
-        signal: AbortSignal.timeout(5000),
-        headers: { 'User-Agent': 'Vercel Function Diagnostic' }
-      });
-      console.log(`[RAG Worker] DIAGNOSTIC: Document AI API test status: ${documentaiRes.status}`);
-    } catch (documentaiError) {
-      console.error('[RAG Worker] DIAGNOSTIC: Document AI API connectivity test FAILED:', documentaiError);
-      if (documentaiError instanceof Error && 'cause' in documentaiError && documentaiError.cause) {
-        const causeError = documentaiError.cause as NodeJS.ErrnoException & { hostname?: string };
-        console.error(`[RAG Worker] DIAGNOSTIC: Document AI Test Error Cause: Code=${causeError.code}, Syscall=${causeError.syscall}, Hostname=${causeError.hostname || 'unknown'}`);
-      }
-    }
   } catch (connectivityError) {
     console.error('[RAG Worker] DIAGNOSTIC: Basic outbound connectivity test FAILED:', connectivityError);
     // Log the specific error cause if available
@@ -199,7 +164,7 @@ async function handler(request: Request) {
       );
     }
 
-    // Verify document exists before processing
+    // Verify document exists and check processing status for idempotency
     try {
       console.log(`[RAG Worker] Verifying document ${documentId} exists in database`);
       const document = await getDocumentById({ id: documentId });
@@ -213,9 +178,25 @@ async function handler(request: Request) {
       }
       
       console.log(`[RAG Worker] Document verification successful: ${document.fileName} (${document.fileType})`);
+      
+      // Idempotency check: If document is already being processed or completed, don't process again
+      // This prevents issues with QStash retries
+      if (document.processingStatus === 'processing' || 
+          document.processingStatus === 'completed' || 
+          document.processingStatus === 'failed') {
+        console.log(`[RAG Worker] Document ${documentId} is already in '${document.processingStatus}' state. Skipping processing (likely a retry).`);
+        return NextResponse.json(
+          { 
+            message: `Document already in '${document.processingStatus}' state. Request ignored for idempotency.`,
+            status: document.processingStatus,
+            idempotencyAction: 'skipped'
+          },
+          { status: 200 }
+        );
+      }
     } catch (dbError) {
       console.error(`[RAG Worker] Database error while verifying document:`, dbError);
-      // Continue processing - this was just a verification step
+      // Continue processing - we'll try to process even if the verification check fails
     }
 
     // Process the document
