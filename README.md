@@ -4,23 +4,28 @@ A Retrieval Augmented Generation (RAG) powered chatbot built with Next.js, Googl
 
 ## Features
 
-- PDF, TXT, and DOCX document upload and processing
-- Vector storage with Pinecone
-- LLM-powered chat with document context retrieval
-- Authentication with Next Auth
-- File storage with Vercel Blob
-- Embedding generation with Replicate's Llama-text-embed-v2
+- **PDF, TXT, and DOCX document upload** with Google Document AI processing
+- **Vector storage with Pinecone** for semantic search
+- **LLM-powered chat** with document context retrieval and source attribution
+- **Multiple AI models** including Google Gemini and OpenAI
+- **Real-time web search** with Tavily integration
+- **Authentication** with Next Auth
+- **File storage** with Vercel Blob
+- **Background processing** with QStash
+- **Robust error handling** and logging
 
 ## Tech Stack
 
-- Next.js 15
-- TypeScript
-- Google AI SDK
-- Pinecone Vector Database
-- Vercel Blob Storage
-- Drizzle ORM
-- PostgreSQL
-- Replicate API (Llama-text-embed-v2)
+- **Next.js 15** with App Router
+- **TypeScript** for type safety
+- **Google AI SDK** for Gemini models
+- **OpenAI SDK** for GPT models
+- **Google Document AI** for document text extraction
+- **Pinecone Vector Database** for semantic search
+- **Vercel Blob Storage** for file uploads
+- **QStash** for background processing
+- **Drizzle ORM** with PostgreSQL
+- **Replicate API** for embeddings
 
 ## Deployment to Vercel
 
@@ -30,9 +35,12 @@ Before deploying this application, you'll need:
 
 1. A Vercel account
 2. A Pinecone database account
-3. A Replicate account for embeddings
-4. A Google API key for AI
-5. A Tavily API key for web search (optional)
+3. A Google Cloud account with Document AI set up
+4. A QStash account for background processing
+5. A Google AI API key for Gemini models
+6. A Replicate account for embeddings
+7. A Tavily API key for web search (optional)
+8. An OpenAI API key for GPT models (optional)
 
 ### Environment Variables
 
@@ -41,16 +49,23 @@ When deploying to Vercel, you need to set up the following environment variables
 ```
 # API Keys
 GOOGLE_API_KEY=your_google_api_key_here
-GOOGLE_GENERATIVE_AI_API_KEY=your_google_api_key_here
+GOOGLE_CREDENTIALS_JSON=your_service_account_json
+GOOGLE_PROJECT_ID=your_google_project_id
+DOCUMENT_AI_PROCESSOR_ID=your_document_ai_processor_id
+DOCUMENT_AI_LOCATION=your_document_ai_location
 PINECONE_API_KEY=your_pinecone_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here (optional)
 OPENAI_API_KEY=your_openai_api_key_here (optional)
 REPLICATE_API_TOKEN=your_replicate_api_token_here
 
+# QStash for background processing
+QSTASH_CURRENT_SIGNING_KEY=your_qstash_current_signing_key
+QSTASH_NEXT_SIGNING_KEY=your_qstash_next_signing_key
+
 # Pinecone Configuration
+PINECONE_INDEX_NAME=your_index_name
 PINECONE_ENVIRONMENT=your_pinecone_environment (classic Pinecone)
 PINECONE_INDEX_HOST=your_pinecone_host_url (serverless Pinecone)
-PINECONE_INDEX_NAME=your_index_name
 
 # Database (Will be configured by Vercel Postgres)
 POSTGRES_URL=your_postgres_connection_string
@@ -77,15 +92,25 @@ AUTH_SECRET=random_secret_string_for_next_auth
    - Vercel will automatically add the required environment variables
    - Alternatively, run `npx vercel blob generate` to create a new blob store
 
-5. **Add Additional Environment Variables**
+5. **Set Up QStash**
+   - Sign up for QStash at [Upstash](https://upstash.com/)
+   - Create a new QStash project
+   - Add your signing keys to environment variables
+
+6. **Set Up Google Document AI**
+   - Create a processor in Google Cloud Console
+   - Create a service account and download the credentials JSON
+   - Add the processor ID, location, and credentials to environment variables
+
+7. **Add All Environment Variables**
    - Add all required environment variables listed above to your Vercel project
    - Go to Settings → Environment Variables in your Vercel project dashboard
 
-6. **Deploy Your Project**
+8. **Deploy Your Project**
    - Click Deploy in the Vercel dashboard
    - The build and database migrations will run automatically
 
-7. **Verify Your Deployment**
+9. **Verify Your Deployment**
    - Test document uploads, RAG processing, and chat functionality
    - Check logs for any issues
 
@@ -97,9 +122,46 @@ AUTH_SECRET=random_secret_string_for_next_auth
 4. Run `pnpm db:migrate` to set up the database
 5. Run `pnpm dev` to start the development server
 
+## Features in Detail
+
+### Document Processing
+
+The application uses Google Document AI for text extraction from various document formats. The processing pipeline:
+
+1. Uploads files to Vercel Blob storage
+2. Processes them with Google Document AI in the background using QStash
+3. Chunks the extracted text and generates embeddings
+4. Stores the vectors in Pinecone for semantic search
+
+### Conversational AI
+
+The chat interface supports:
+
+1. Multiple AI models (Google Gemini and OpenAI GPT)
+2. Real-time web search via Tavily
+3. Document context retrieval from your uploaded files
+4. Source attribution for information from documents
+5. File attachments with proper content type handling
+
+### Background Processing
+
+Document processing is handled in the background:
+
+1. QStash queues processing tasks
+2. The worker processes documents with proper error handling
+3. Idempotency checks prevent duplicate processing
+4. Status tracking shows processing progress
+
 ## Troubleshooting
 
 - **Blob Storage Issues**: Ensure your `BLOB_READ_WRITE_TOKEN` is valid and has the correct permissions
 - **Database Connection**: Verify your Postgres connection string is correct
 - **Pinecone Configuration**: Make sure you've provided either `PINECONE_ENVIRONMENT` or `PINECONE_INDEX_HOST`
-- **RAG Processing**: Check logs for errors in document processing or embedding generation
+- **QStash Errors**: Check that your signing keys are correctly configured
+- **Document AI**: Verify your service account has the Document AI API User role
+- **RAG Processing**: Monitor logs for errors in document processing or embedding generation
+- **Attachment Content Types**: If attachments aren't displaying correctly, check the logs for content type detection
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

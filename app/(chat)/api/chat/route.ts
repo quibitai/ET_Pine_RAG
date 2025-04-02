@@ -35,39 +35,6 @@ export const maxDuration = 60;
 export const runtime = 'nodejs';
 
 /**
- * Ensures all attachments have a valid content type
- */
-function ensureAttachmentsHaveContentType(messages: Array<UIMessage>): Array<UIMessage> {
-  return messages.map(message => {
-    if (!message.experimental_attachments || message.experimental_attachments.length === 0) {
-      return message;
-    }
-    const fixedAttachments = message.experimental_attachments.map(attachment => {
-      // If contentType exists and is not empty, keep it
-      if (attachment.contentType && attachment.contentType.trim() !== '') {
-        return attachment;
-      }
-      // Infer based on name if possible
-      const filename = attachment.name?.toLowerCase() || '';
-      let inferredContentType = attachment.contentType || ''; // Keep original if it existed but was empty
-      
-      if (!inferredContentType) { // Only infer if truly missing
-        if (filename.endsWith('.pdf')) inferredContentType = 'application/pdf';
-        else if (filename.endsWith('.txt')) inferredContentType = 'text/plain';
-        else if (filename.endsWith('.docx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-        else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) inferredContentType = 'image/jpeg';
-        else if (filename.endsWith('.png')) inferredContentType = 'image/png';
-        else inferredContentType = 'application/octet-stream'; // Fallback
-      }
-      
-      console.log(`Attachment Fix: Name='${filename || 'N/A'}', OriginalType='${attachment.contentType || ''}', FinalType='${inferredContentType}'`);
-      return { ...attachment, contentType: inferredContentType };
-    });
-    return { ...message, experimental_attachments: fixedAttachments };
-  });
-}
-
-/**
  * Enhanced version that fetches document metadata from the database for attachments
  * to ensure proper content types are used instead of application/octet-stream
  */
@@ -223,8 +190,35 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
     return enhancedMessages;
   } catch (error) {
     console.error('[Attachment Fix] Error enhancing attachments with metadata:', error);
-    // Fall back to the basic function if anything goes wrong
-    return ensureAttachmentsHaveContentType(messages);
+    // Fall back to basic inference for filenames
+    return messages.map(message => {
+      if (!message.experimental_attachments || message.experimental_attachments.length === 0) {
+        return message;
+      }
+      const fixedAttachments = message.experimental_attachments.map(attachment => {
+        if (attachment.contentType && 
+            attachment.contentType.trim() !== '' && 
+            attachment.contentType !== 'application/octet-stream') {
+          return attachment;
+        }
+        
+        const filename = attachment.name?.toLowerCase() || '';
+        let inferredContentType = attachment.contentType || '';
+        
+        if (!inferredContentType || inferredContentType === 'application/octet-stream') {
+          if (filename.endsWith('.pdf')) inferredContentType = 'application/pdf';
+          else if (filename.endsWith('.txt')) inferredContentType = 'text/plain';
+          else if (filename.endsWith('.docx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) inferredContentType = 'image/jpeg';
+          else if (filename.endsWith('.png')) inferredContentType = 'image/png';
+          else inferredContentType = 'application/octet-stream';
+        }
+        
+        console.log(`[Attachment Fix] Emergency fallback: Name='${filename || 'N/A'}', OriginalType='${attachment.contentType || ''}', FinalType='${inferredContentType}'`);
+        return { ...attachment, contentType: inferredContentType };
+      });
+      return { ...message, experimental_attachments: fixedAttachments };
+    });
   }
 }
 
