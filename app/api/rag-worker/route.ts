@@ -34,31 +34,6 @@ async function handler(request: Request) {
   }
 
   try {
-    // --- TEMPORARY DIAGNOSTIC ---
-    console.log('[RAG Worker] Testing external connectivity to google.com...');
-    try {
-      const testResponse = await fetch('https://google.com', { method: 'HEAD' });
-      console.log(`[RAG Worker] Test fetch to google.com status: ${testResponse.status}`);
-      
-      // Also test connectivity to Unstructured API
-      console.log('[RAG Worker] Testing connectivity to api.unstructured.io...');
-      const unstructuredTestResponse = await fetch('https://api.unstructured.io', { 
-        method: 'HEAD',
-        headers: { 'User-Agent': 'Vercel Function Connectivity Test' }
-      });
-      console.log(`[RAG Worker] Test fetch to api.unstructured.io status: ${unstructuredTestResponse.status}`);
-    } catch (testError) {
-      console.error('[RAG Worker] ❌ FAILED test fetch:', testError);
-      // Check error properties, handling potential unknown type
-      const errorObj = testError as { code?: string };
-      if (errorObj.code === 'ENOTFOUND') {
-        console.error('[RAG Worker] This appears to be a DNS resolution issue - the hostname could not be found');
-      } else if (errorObj.code === 'ECONNREFUSED') {
-        console.error('[RAG Worker] This appears to be a connection issue - the server actively refused the connection');
-      }
-    }
-    // --- END TEMPORARY DIAGNOSTIC ---
-
     // Parse the job payload
     let body;
     try {
