@@ -68,6 +68,38 @@ export async function GET(request: Request) {
   });
 }
 
+// Add test endpoint to diagnose if the worker can handle requests without QStash
+// Use a special header for security since we're bypassing signature verification
+export async function OPTIONS(request: Request) {
+  console.log("[RAG Worker] Test POST endpoint invoked (OPTIONS method)");
+  
+  // Check for diagnostic test header to ensure this isn't called accidentally
+  if (request.headers.get('x-diagnostic-test') !== 'rag-worker-test-123') {
+    return NextResponse.json({ error: "Unauthorized test access" }, { status: 401 });
+  }
+  
+  try {
+    // Parse the body as we would in the main handler
+    const body = await request.json();
+    console.log("[RAG Worker] Diagnostic test body:", body);
+    
+    // Don't actually process anything, just check if we can read the body
+    return NextResponse.json({
+      status: "test_ok",
+      message: "RAG worker direct POST test succeeded",
+      receivedBody: body,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("[RAG Worker] Diagnostic test error:", error);
+    return NextResponse.json({
+      status: "test_error",
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString()
+    }, { status: 500 });
+  }
+}
+
 // Define the main handler logic separately
 async function handler(request: Request) {
   // Add startup confirmation log with timestamp for tracking in logs
