@@ -82,226 +82,50 @@ export async function PATCH(request: Request) {
   }
 }
 
-// Direct POST handler implementation with manual QStash verification
+// Simplified debugging version of the POST handler
 export async function POST(request: Request): Promise<NextResponse> {
     const startTime = new Date();
-    console.log(`[RAG Worker] ============ HANDLER INVOKED (Manual Verification) ============`);
-    console.log(`[RAG Worker] Handler started at ${startTime.toISOString()}`);
+    console.log(`[RAG Worker - DEBUG MODE] ============ HANDLER INVOKED ============`);
+    console.log(`[RAG Worker - DEBUG MODE] Handler started at ${startTime.toISOString()}`);
+
+    // Log environment and headers
+    console.log(`[RAG Worker - DEBUG MODE] Environment: ${process.env.NODE_ENV || 'unknown'}`);
+    console.log(`[RAG Worker - DEBUG MODE] Vercel env: ${process.env.VERCEL_ENV || 'not Vercel'}`);
     
-    // Log environment awareness
-    console.log(`[RAG Worker] Running in environment: ${process.env.NODE_ENV || 'unknown'}`);
-    console.log(`[RAG Worker] Vercel environment: ${process.env.VERCEL_ENV || 'not Vercel'}`);
-    console.log(`[RAG Worker] Vercel region: ${process.env.VERCEL_REGION || 'unknown'}`);
-
-    // Basic connectivity diagnostic test
     try {
-      console.log('[RAG Worker] DIAGNOSTIC: Testing basic outbound connectivity to google.com...');
-      // Use HEAD request for efficiency, with a short timeout
-      const testRes = await fetch('https://google.com', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
-      console.log(`[RAG Worker] DIAGNOSTIC: Basic connectivity test to google.com status: ${testRes.status}`);
-    } catch (connectivityError) {
-      console.error('[RAG Worker] DIAGNOSTIC: Basic outbound connectivity test FAILED:', connectivityError);
-      // Log the specific error cause if available
-      if (connectivityError instanceof Error && 'cause' in connectivityError && connectivityError.cause) {
-        const causeError = connectivityError.cause as NodeJS.ErrnoException & { hostname?: string };
-        console.error(`[RAG Worker] DIAGNOSTIC: Connectivity Test Error Cause: Code=${causeError.code}, Syscall=${causeError.syscall}, Hostname=${causeError.hostname || 'unknown'}`);
-      }
-      // Consider stopping further execution if basic connectivity fails
-      // Uncomment to block processing when basic connectivity fails
-      // return NextResponse.json({ error: 'Basic network connectivity failed' }, { status: 500 });
-    }
-
-    // Log request details
-    try {
-      console.log('[RAG Worker] Request method:', request.method);
-      console.log('[RAG Worker] Request URL:', request.url);
-      
-      // Log headers without sensitive information
-      const safeHeaders = Object.fromEntries(
-        Array.from(request.headers.entries())
-          .filter(([key]) => !key.includes('auth') && !key.includes('key') && !key.includes('token'))
-      );
-      console.log('[RAG Worker] Request headers (safe):', safeHeaders);
-    } catch (headerError) {
-      console.error('[RAG Worker] Error accessing request details:', headerError);
-    }
-
-    try {
-        // 1. Read the raw body text *once*
-        let rawBody: string;
-        try {
-            console.log('[RAG Worker] Reading raw request body...');
-            rawBody = await request.text();
-            console.log(`[RAG Worker] Raw body read successfully (length: ${rawBody.length}).`);
-        } catch (readError) {
-            console.error('[RAG Worker] Failed to read request body:', readError);
-            return NextResponse.json({ error: 'Failed to read request body' }, { status: 500 });
-        }
-
-        // 2. Verify signature manually
-        const qstashSignature = request.headers.get("upstash-signature");
-        if (!qstashSignature) {
-          console.error('[RAG Worker] Missing upstash-signature header');
-          return NextResponse.json({ error: 'Missing signature' }, { status: 401 });
-        }
-
-        // Ensure QStash signing keys are in environment variables
-        const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY;
-        const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
-        if (!currentSigningKey || !nextSigningKey) {
-             console.error('[RAG Worker] QStash signing keys not configured in environment variables.');
-             return NextResponse.json({ error: 'Server signing key configuration error' }, { status: 500 });
-        }
-
-        const receiver = new Receiver({
-          currentSigningKey: currentSigningKey,
-          nextSigningKey: nextSigningKey,
-        });
-
-        let isValid = false;
-        try {
-            console.log('[RAG Worker] Verifying QStash signature...');
-            isValid = await receiver.verify({
-              signature: qstashSignature,
-              body: rawBody,
-              // Optional: add clockTolerance if needed, e.g., clockTolerance: 60
-            });
-        } catch (verificationError) {
-            console.error('[RAG Worker] Error during signature verification:', verificationError);
-            isValid = false; // Treat verification errors as invalid
-        }
-
-        if (!isValid) {
-          console.error('[RAG Worker] Invalid QStash signature');
-          return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-        }
-        console.log('[RAG Worker] QStash signature verified manually.');
-
-        // 3. Parse the body *after* verification
-        let body;
-        try {
-           console.log('[RAG Worker] Parsing verified raw body...');
-           body = JSON.parse(rawBody);
-           console.log('[RAG Worker] Successfully parsed request body (after manual verification)');
-        } catch (parseError) {
-           console.error('[RAG Worker] Failed to parse verified request body:', parseError);
-           return NextResponse.json({ error: 'Invalid JSON', details: parseError instanceof Error ? parseError.message : String(parseError) }, { status: 400 });
-        }
-
-        console.log('[RAG Worker] Parsed request body:', body);
-
-        // 4. Extract and validate required fields
-        const { documentId, userId } = body;
-
-        if (!documentId) {
-          console.error('[RAG Worker] Missing documentId in payload:', body);
-          return NextResponse.json(
-            { error: 'Missing required field: documentId' },
-            { status: 400 }
-          );
-        }
+        // Log request details for debugging
+        console.log('[RAG Worker - DEBUG MODE] Request method:', request.method);
+        console.log('[RAG Worker - DEBUG MODE] Request URL:', request.url);
         
-        if (!userId) {
-          console.error('[RAG Worker] Missing userId in payload:', body);
-          return NextResponse.json(
-            { error: 'Missing required field: userId' },
-            { status: 400 }
-          );
-        }
-
-        // Verify document exists and check processing status for idempotency
-        try {
-          console.log(`[RAG Worker] Verifying document ${documentId} exists in database`);
-          const document = await getDocumentById({ id: documentId });
-          
-          if (!document) {
-            console.error(`[RAG Worker] Document ${documentId} not found in database`);
-            return NextResponse.json(
-              { error: `Document ${documentId} not found` },
-              { status: 404 }
-            );
-          }
-          
-          console.log(`[RAG Worker] Document verification successful: ${document.fileName} (${document.fileType})`);
-          
-          // Idempotency check: If document is already being processed or completed, don't process again
-          // This prevents issues with QStash retries
-          if (document.processingStatus === 'processing' || 
-              document.processingStatus === 'completed' || 
-              document.processingStatus === 'failed') {
-            console.log(`[RAG Worker] Document ${documentId} is already in '${document.processingStatus}' state. Skipping processing (likely a retry).`);
-            return NextResponse.json(
-              { 
-                message: `Document already in '${document.processingStatus}' state. Request ignored for idempotency.`,
-                status: document.processingStatus,
-                idempotencyAction: 'skipped'
-              },
-              { status: 200 }
-            );
-          }
-        } catch (dbError) {
-          console.error(`[RAG Worker] Database error while verifying document:`, dbError);
-          // Continue processing - we'll try to process even if the verification check fails
-        }
-
-        // Process the document
-        console.log(`[RAG Worker] Starting processing for document ${documentId} (user: ${userId})`);
-        console.time(`[RAG Worker] document_processing_${documentId}`);
+        // Log headers (excluding sensitive ones)
+        const safeHeaders = Object.fromEntries(
+            Array.from(request.headers.entries())
+                .filter(([key]) => !key.includes('auth') && !key.includes('key') && !key.includes('token'))
+        );
+        console.log('[RAG Worker - DEBUG MODE] Request headers (safe):', safeHeaders);
         
-        try {
-          const success = await processFileForRag({ documentId, userId });
-          console.timeEnd(`[RAG Worker] document_processing_${documentId}`);
-          
-          if (success) {
-            const processingTime = new Date().getTime() - startTime.getTime();
-            console.log(`[RAG Worker] Successfully processed document ${documentId} in ${processingTime}ms`);
-            return NextResponse.json(
-              { 
-                message: 'Processing completed successfully',
-                processingTimeMs: processingTime
-              },
-              { status: 200 }
-            );
-          } else {
-            console.error(`[RAG Worker] Processing returned false for document ${documentId}`);
-            return NextResponse.json(
-              { error: 'Processing failed' },
-              { status: 500 }
-            );
-          }
-        } catch (processingError) {
-          console.timeEnd(`[RAG Worker] document_processing_${documentId}`);
-          console.error(`[RAG Worker] Error during document processing:`, processingError);
-          
-          return NextResponse.json(
-            { 
-              error: 'Processing error', 
-              details: processingError instanceof Error ? processingError.message : String(processingError)
-            },
-            { status: 500 }
-          );
-        }
+        // Attempt to read the body as JSON directly
+        console.log('[RAG Worker - DEBUG MODE] Attempting request.json()...');
+        const body = await request.json();
+        console.log('[RAG Worker - DEBUG MODE] Successfully parsed body via request.json():', body);
+
+        // If successful, return a success response for debugging
+        return NextResponse.json({ status: 'DEBUG_SUCCESS', received_body: body });
 
     } catch (error) {
-        console.error('[RAG Worker] Unhandled error in handler:', error);
-        if (error instanceof Error) {
-          console.error('[RAG Worker] Error name:', error.name);
-          console.error('[RAG Worker] Error message:', error.message);
-          console.error('[RAG Worker] Error stack:', error.stack);
+        console.error('[RAG Worker - DEBUG MODE] Error reading/parsing request body:', error);
+        if (error instanceof Error && error.message.includes('Body has already been read')) {
+            console.error('[RAG Worker - DEBUG MODE] Confirmed: Body was already read before handler could parse.');
         }
-        
-        return NextResponse.json(
-          {
-            error: 'Internal server error',
-            details: error instanceof Error ? error.message : String(error)
-          },
-          { status: 500 }
-        );
+        // Return an error response for debugging
+        return NextResponse.json({ 
+            status: 'DEBUG_ERROR', 
+            error: error instanceof Error ? error.message : String(error) 
+        }, { status: 500 });
     } finally {
         const endTime = new Date();
         const duration = endTime.getTime() - startTime.getTime();
-        console.log(`[RAG Worker] Handler completed at ${endTime.toISOString()}`);
-        console.log(`[RAG Worker] Total handler duration: ${duration}ms`);
-        console.log(`[RAG Worker] ============ HANDLER COMPLETED (Manual Verification) ============`);
+        console.log(`[RAG Worker - DEBUG MODE] Handler completed at ${endTime.toISOString()} (Duration: ${duration}ms)`);
+        console.log(`[RAG Worker - DEBUG MODE] ============ HANDLER COMPLETED ============`);
     }
 } 
