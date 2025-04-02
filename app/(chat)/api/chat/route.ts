@@ -78,28 +78,58 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
   }
 
   try {
+    console.log('[Attachment Fix] Starting attachment enhancement for messages:', 
+      messages.filter(m => m.experimental_attachments?.length).length);
+    
     // Process each message
     const enhancedMessages = await Promise.all(messages.map(async message => {
       if (!message.experimental_attachments || message.experimental_attachments.length === 0) {
         return message;
       }
       
+      console.log(`[Attachment Fix] Processing message ${message.id} with ${message.experimental_attachments.length} attachments`);
+      
       // Process each attachment in this message
-      const enhancedAttachments = await Promise.all(message.experimental_attachments.map(async attachment => {
+      const enhancedAttachments = await Promise.all(message.experimental_attachments.map(async (attachment, index) => {
+        console.log(`[Attachment Fix] Processing attachment ${index+1}/${message.experimental_attachments?.length}:`, 
+          { url: attachment.url?.substring(0, 30) + '...', name: attachment.name, contentType: attachment.contentType });
+        
         // If contentType exists and is not empty and not application/octet-stream, keep it
         if (attachment.contentType && 
             attachment.contentType.trim() !== '' && 
             attachment.contentType !== 'application/octet-stream') {
+          console.log(`[Attachment Fix] Keeping existing valid content type: ${attachment.contentType}`);
           return attachment;
         }
         
         // Extract document ID from the URL or name field if present
         let documentId = '';
         
-        // Check if URL contains a UUID pattern that might be a document ID
+        // Multiple methods to extract document ID
+        
+        // Method 1: Check if URL contains a UUID pattern that might be a document ID
         const urlMatch = attachment.url?.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i);
         if (urlMatch && urlMatch[1]) {
           documentId = urlMatch[1];
+          console.log(`[Attachment Fix] Extracted document ID from URL: ${documentId}`);
+        }
+        
+        // Method 2: Check if name is a UUID (sometimes attachment.name is the document ID)
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!documentId && attachment.name && uuidPattern.test(attachment.name)) {
+          documentId = attachment.name;
+          console.log(`[Attachment Fix] Extracted document ID from name: ${documentId}`);
+        }
+        
+        // Method 3: Check if URL contains another type of document identifier
+        if (!documentId && attachment.url) {
+          // Try to extract the last path segment which could be a document identifier
+          const pathSegments = attachment.url.split('/').filter(Boolean);
+          const potentialId = pathSegments[pathSegments.length - 1];
+          if (potentialId && potentialId.length > 8) { // Arbitrary length check to avoid false positives
+            documentId = potentialId;
+            console.log(`[Attachment Fix] Extracted potential document ID from URL path: ${documentId}`);
+          }
         }
         
         // If we have a potential document ID, try to fetch it
@@ -108,17 +138,37 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
             console.log(`[Attachment Fix] Looking up document metadata for ID: ${documentId}`);
             const doc = await getDocumentById({ id: documentId });
             
-            if (doc && doc.fileType && doc.fileType.trim() !== '') {
-              console.log(`[Attachment Fix] Found document with type: ${doc.fileType} for ID: ${documentId}`);
-              return { 
-                ...attachment, 
-                contentType: doc.fileType 
-              };
+            if (doc) {
+              console.log(`[Attachment Fix] Found document:`, { 
+                id: doc.id,
+                fileName: doc.fileName,
+                fileType: doc.fileType,
+                processingStatus: doc.processingStatus
+              });
+              
+              if (doc.fileType && doc.fileType.trim() !== '') {
+                console.log(`[Attachment Fix] Using document fileType: ${doc.fileType} for attachment`);
+                return { 
+                  ...attachment, 
+                  contentType: doc.fileType,
+                  // Add name from document if attachment doesn't have one
+                  name: attachment.name || doc.fileName || attachment.name
+                };
+              } else {
+                console.log(`[Attachment Fix] Document found but has no fileType. Document:`, { 
+                  id: doc.id, 
+                  fileType: doc.fileType || 'undefined' 
+                });
+              }
+            } else {
+              console.log(`[Attachment Fix] No document found with ID: ${documentId}`);
             }
           } catch (error) {
             console.error(`[Attachment Fix] Error fetching document metadata:`, error);
             // Continue with basic inference if we can't fetch metadata
           }
+        } else {
+          console.log(`[Attachment Fix] Couldn't extract document ID from attachment`);
         }
         
         // Fallback to basic inference from filename
@@ -126,21 +176,38 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
         let inferredContentType = attachment.contentType || ''; // Keep original if it existed but was empty
         
         if (!inferredContentType || inferredContentType === 'application/octet-stream') {
+          // More extensive MIME type inference
           if (filename.endsWith('.pdf')) inferredContentType = 'application/pdf';
           else if (filename.endsWith('.txt')) inferredContentType = 'text/plain';
           else if (filename.endsWith('.docx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          else if (filename.endsWith('.doc')) inferredContentType = 'application/msword';
           else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) inferredContentType = 'image/jpeg';
           else if (filename.endsWith('.png')) inferredContentType = 'image/png';
+          else if (filename.endsWith('.gif')) inferredContentType = 'image/gif';
+          else if (filename.endsWith('.svg')) inferredContentType = 'image/svg+xml';
+          else if (filename.endsWith('.webp')) inferredContentType = 'image/webp';
+          else if (filename.endsWith('.xlsx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          else if (filename.endsWith('.xls')) inferredContentType = 'application/vnd.ms-excel';
+          else if (filename.endsWith('.csv')) inferredContentType = 'text/csv';
+          else if (filename.endsWith('.pptx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+          else if (filename.endsWith('.ppt')) inferredContentType = 'application/vnd.ms-powerpoint';
+          else if (filename.endsWith('.md')) inferredContentType = 'text/markdown';
+          else if (filename.endsWith('.html') || filename.endsWith('.htm')) inferredContentType = 'text/html';
+          else if (filename.endsWith('.json')) inferredContentType = 'application/json';
+          else if (filename.endsWith('.xml')) inferredContentType = 'application/xml';
           else inferredContentType = 'application/octet-stream'; // Last resort fallback
+          
+          console.log(`[Attachment Fix] Inferred content type from filename: ${inferredContentType}`);
         }
         
-        console.log(`[Attachment Fix] Name='${filename || 'N/A'}', OriginalType='${attachment.contentType || ''}', FinalType='${inferredContentType}'`);
+        console.log(`[Attachment Fix] Final result: Name='${filename || 'N/A'}', Original='${attachment.contentType || ''}', Final='${inferredContentType}'`);
         return { ...attachment, contentType: inferredContentType };
       }));
       
       return { ...message, experimental_attachments: enhancedAttachments };
     }));
     
+    console.log('[Attachment Fix] Completed attachment enhancement');
     return enhancedMessages;
   } catch (error) {
     console.error('[Attachment Fix] Error enhancing attachments with metadata:', error);
