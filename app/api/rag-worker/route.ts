@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   // Basic connectivity diagnostic test
   let connectivityResults = {
     google: { success: false, status: null as number | null, error: null as string | null },
-    unstructured: { success: false, status: null as number | null, error: null as string | null }
+    documentai: { success: false, status: null as number | null, error: null as string | null }
   };
   
   try {
@@ -33,20 +33,20 @@ export async function GET(request: Request) {
   }
   
   try {
-    console.log('[RAG Worker] Testing connectivity to api.unstructured.io...');
-    const unstructuredTest = await fetch('https://api.unstructured.io', { 
+    console.log('[RAG Worker] Testing connectivity to documentai.googleapis.com...');
+    const documentaiTest = await fetch('https://documentai.googleapis.com', { 
       method: 'HEAD', 
       signal: AbortSignal.timeout(5000),
       headers: { 'User-Agent': 'Vercel Function Diagnostic' }
     });
-    connectivityResults.unstructured = { 
+    connectivityResults.documentai = { 
       success: true, 
-      status: unstructuredTest.status,
+      status: documentaiTest.status,
       error: null
     };
   } catch (error) {
-    connectivityResults.unstructured.error = error instanceof Error ? error.message : String(error);
-    console.error('[RAG Worker] Unstructured API connectivity test failed:', error);
+    connectivityResults.documentai.error = error instanceof Error ? error.message : String(error);
+    console.error('[RAG Worker] Document AI API connectivity test failed:', error);
   }
   
   // Return environment and connectivity information
@@ -120,20 +120,20 @@ async function handler(request: Request) {
     const testRes = await fetch('https://google.com', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
     console.log(`[RAG Worker] DIAGNOSTIC: Basic connectivity test to google.com status: ${testRes.status}`);
     
-    // Also test connectivity to api.unstructured.io directly for comparison
+    // Also test connectivity to Document AI API directly for comparison
     try {
-      console.log('[RAG Worker] DIAGNOSTIC: Testing connectivity to api.unstructured.io...');
-      const unstructuredRes = await fetch('https://api.unstructured.io', { 
+      console.log('[RAG Worker] DIAGNOSTIC: Testing connectivity to documentai.googleapis.com...');
+      const documentaiRes = await fetch('https://documentai.googleapis.com', { 
         method: 'HEAD', 
         signal: AbortSignal.timeout(5000),
         headers: { 'User-Agent': 'Vercel Function Diagnostic' }
       });
-      console.log(`[RAG Worker] DIAGNOSTIC: Unstructured API test status: ${unstructuredRes.status}`);
-    } catch (unstructuredError) {
-      console.error('[RAG Worker] DIAGNOSTIC: Unstructured API connectivity test FAILED:', unstructuredError);
-      if (unstructuredError instanceof Error && 'cause' in unstructuredError && unstructuredError.cause) {
-        const causeError = unstructuredError.cause as NodeJS.ErrnoException & { hostname?: string };
-        console.error(`[RAG Worker] DIAGNOSTIC: Unstructured Test Error Cause: Code=${causeError.code}, Syscall=${causeError.syscall}, Hostname=${causeError.hostname || 'unknown'}`);
+      console.log(`[RAG Worker] DIAGNOSTIC: Document AI API test status: ${documentaiRes.status}`);
+    } catch (documentaiError) {
+      console.error('[RAG Worker] DIAGNOSTIC: Document AI API connectivity test FAILED:', documentaiError);
+      if (documentaiError instanceof Error && 'cause' in documentaiError && documentaiError.cause) {
+        const causeError = documentaiError.cause as NodeJS.ErrnoException & { hostname?: string };
+        console.error(`[RAG Worker] DIAGNOSTIC: Document AI Test Error Cause: Code=${causeError.code}, Syscall=${causeError.syscall}, Hostname=${causeError.hostname || 'unknown'}`);
       }
     }
   } catch (connectivityError) {
