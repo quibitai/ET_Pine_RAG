@@ -69,49 +69,47 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
           return attachment;
         }
         
-        // Extract document ID from the URL or name field if present
-        let documentId = '';
-        
-        // Multiple methods to extract document ID
-        
-        // Method 1: Check if URL contains a UUID pattern that might be a document ID
-        const urlMatch = attachment.url?.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i);
-        if (urlMatch && urlMatch[1]) {
-          documentId = urlMatch[1];
-          console.log(`[Attachment Fix] Extracted document ID from URL: ${documentId}`);
-        }
-        
-        // Method 2: Check if name is a UUID (sometimes attachment.name is the document ID)
-        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!documentId && attachment.name && uuidPattern.test(attachment.name)) {
-          documentId = attachment.name;
-          console.log(`[Attachment Fix] Extracted document ID from name: ${documentId}`);
-        }
-        
-        // Method 3: Check if URL contains a document ID in Vercel Blob URL format
-        if (!documentId && attachment.url) {
-          const blobMatch = attachment.url.match(/vercel-blob\.com\/.+?\/([^\/]+)/i);
-          if (blobMatch && blobMatch[1]) {
-            documentId = blobMatch[1];
-            console.log(`[Attachment Fix] Extracted document ID from Vercel Blob URL: ${documentId}`);
-          }
-        }
-        
-        // Method 4: Check if URL contains another type of document identifier
-        if (!documentId && attachment.url) {
-          // Try to extract the last path segment which could be a document identifier
-          const pathSegments = attachment.url.split('/').filter(Boolean);
-          const potentialId = pathSegments[pathSegments.length - 1];
-          if (potentialId && potentialId.length > 8) { // Arbitrary length check to avoid false positives
-            documentId = potentialId;
-            console.log(`[Attachment Fix] Extracted potential document ID from URL path: ${documentId}`);
-          }
-        }
-        
-        // If we have a potential document ID, try to fetch it
+        // Check if attachment already has an explicit documentId property
+        // @ts-ignore - Check if documentId exists on the attachment object
+        let documentId = attachment.documentId || '';
         if (documentId) {
+          console.log(`[Attachment Fix] Found explicit documentId property on attachment: ${documentId}`);
+        }
+        
+        // If no explicit documentId, try multiple extraction methods
+        if (!documentId) {
+          // Method 1: Check if URL contains a UUID pattern that might be a document ID
+          const urlMatch = attachment.url?.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i);
+          if (urlMatch && urlMatch[1]) {
+            documentId = urlMatch[1];
+            console.log(`[Attachment Fix] Extracted document ID from URL: ${documentId}`);
+          }
+          
+          // Method 2: Check if name is a UUID (sometimes attachment.name is the document ID)
+          const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!documentId && attachment.name && uuidPattern.test(attachment.name)) {
+            documentId = attachment.name;
+            console.log(`[Attachment Fix] Extracted document ID from name: ${documentId}`);
+          }
+          
+          // Method 3: Check if URL contains a document ID in Vercel Blob URL format
+          if (!documentId && attachment.url) {
+            const blobMatch = attachment.url.match(/vercel-blob\.com\/.+?\/([^\/]+)/i);
+            if (blobMatch && blobMatch[1]) {
+              // Don't use the full filename as a document ID
+              // Instead, just log it for debugging but don't set it as documentId
+              console.log(`[Attachment Fix] Found Vercel Blob URL segment: ${blobMatch[1]}, but not using as document ID`);
+            }
+          }
+        }
+        
+        // Validate if the documentId is a valid UUID before querying the database
+        const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(documentId);
+        
+        // If we have a valid UUID as documentId, try to fetch it
+        if (documentId && isValidUuid) {
           try {
-            console.log(`[Attachment Fix] Looking up document metadata for ID: ${documentId}`);
+            console.log(`[Attachment Fix] Looking up document metadata for valid UUID: ${documentId}`);
             const doc = await getDocumentById({ id: documentId });
             
             if (doc) {
@@ -143,8 +141,11 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
             console.error(`[Attachment Fix] Error fetching document metadata:`, error);
             // Continue with basic inference if we can't fetch metadata
           }
+        } else if (documentId) {
+          // We have a documentId but it's not a valid UUID
+          console.log(`[Attachment Fix] Extracted ID '${documentId}' is not a valid UUID format, skipping database lookup`);
         } else {
-          console.log(`[Attachment Fix] Couldn't extract document ID from attachment`);
+          console.log(`[Attachment Fix] Couldn't extract a document ID from attachment`);
         }
         
         // Fallback to basic inference from filename
