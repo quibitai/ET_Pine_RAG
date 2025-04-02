@@ -3,6 +3,7 @@ import { generateEmbeddings } from './ai/utils';
 import { updateFileRagStatus, getDocumentById } from './db/queries';
 import { randomUUID } from 'crypto';
 import type { PineconeRecord, RecordMetadata } from '@pinecone-database/pinecone';
+import { DocumentProcessorServiceClient } from '@google-cloud/documentai';
 
 /**
  * Splits text into chunks of specified size with overlap
@@ -41,283 +42,94 @@ function chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
   return chunks;
 }
 
-// Interface for Unstructured API Response
-interface UnstructuredElement {
-  type: string;
-  text: string;
-  metadata: {
-    filename?: string;
-    page_number?: number;
-  };
-}
-
 /**
- * Extracts text from a document using the Unstructured API
+ * Extracts text from a document using Google Cloud Document AI
  * @param fileUrl URL of the file to process
- * @param apiKey Unstructured API key
- * @returns Object containing extracted elements and full text
+ * @param fileType MIME type of the file
+ * @returns Object containing extracted full text
  */
-async function extractTextWithUnstructured(
+async function extractTextWithGoogleDocumentAI(
   fileUrl: string,
-  apiKey: string
-): Promise<{ elements: UnstructuredElement[]; fullText: string }> {
-  console.log(`[Unstructured] Starting extraction for URL: ${fileUrl.split('?')[0]}`);
+  fileType: string
+): Promise<{ fullText: string }> {
+  console.log(`[Document AI] Starting extraction for URL: ${fileUrl.split('?')[0]}`);
   
-  // Primary and fallback API endpoints
-  const apiHostname = "api.unstructured.io";
-  // IP address fallbacks (current as of latest DNS lookup)
-  const apiFallbackIPs = ["4.227.53.74", "48.216.143.214"]; // Current IPs for api.unstructured.io
-  const apiFallbackIP = apiFallbackIPs[0]; // Use the first IP as primary fallback
-  const apiPath = "/general/v0/general";
-  
-  let apiUrl = `https://${apiHostname}${apiPath}`;
-  let usedFallbackIP = false;
-
-  // Log DNS resolution attempt
-  console.log(`[Unstructured] Attempting to resolve DNS for ${apiHostname}...`);
-  
-  const requestData = {
-    url: fileUrl,
-    strategy: "auto",
-    pdf_infer_table_structure: "true",
-  };
-
   try {
-    // First, test API availability with a simple HEAD request
-    let dnsResolutionFailed = false;
+    // Verify required environment variables
+    const projectId = process.env.DOCUMENT_AI_PROJECT_ID;
+    const location = process.env.DOCUMENT_AI_LOCATION;
+    const processorId = process.env.DOCUMENT_AI_PROCESSOR_ID;
     
-    try {
-      console.log(`[Unstructured] Testing API availability with HEAD request...`);
-      const testResponse = await fetch(`https://${apiHostname}`, {
-        method: "HEAD",
-        headers: { "User-Agent": "Vercel Function Connectivity Test" },
-        // Add a reasonable timeout
-        signal: AbortSignal.timeout(5000) // 5 second timeout for the test
-      });
-      console.log(`[Unstructured] API availability test result: ${testResponse.status} ${testResponse.statusText}`);
-    } catch (testError) {
-      // Log but don't fail - this is just a pre-check
-      console.error(`[Unstructured] API availability test failed:`, testError);
-      const errorObj = testError as { name?: string, code?: string, cause?: Error };
-      
-      if (errorObj.name === 'AbortError') {
-        console.error(`[Unstructured] API availability test timed out after 5 seconds`);
-      } else if (errorObj.code === 'ENOTFOUND') {
-        console.error(`[Unstructured] DNS resolution failed - Cannot resolve ${apiHostname}`);
-        console.error(`[Unstructured] Will try fallback to direct IP address: ${apiFallbackIP}`);
-        dnsResolutionFailed = true;
-        
-        // Switch to IP address fallback
-        apiUrl = `https://${apiFallbackIP}${apiPath}`;
-        usedFallbackIP = true;
-        
-        // Test the IP fallback
-        try {
-          console.log(`[Unstructured] Testing fallback IP connectivity...`);
-          const ipTestResponse = await fetch(`https://${apiFallbackIP}`, {
-            method: "HEAD",
-            headers: { 
-              "User-Agent": "Vercel Function Connectivity Test",
-              // Add Host header to handle TLS certificate validation
-              "Host": apiHostname 
-            },
-            signal: AbortSignal.timeout(5000)
-          });
-          console.log(`[Unstructured] Fallback IP test result: ${ipTestResponse.status} ${ipTestResponse.statusText}`);
-        } catch (ipTestError) {
-          console.error(`[Unstructured] Fallback IP test also failed:`, ipTestError);
-          // Continue anyway - this is just a pre-check
-        }
-      }
+    if (!projectId || !location || !processorId) {
+      throw new Error('Missing required Document AI environment variables. Check DOCUMENT_AI_PROJECT_ID, DOCUMENT_AI_LOCATION, and DOCUMENT_AI_PROCESSOR_ID');
     }
-
-    // Proceed with the main API call
-    console.time('unstructured_api_call');
-    console.log(`[Unstructured] Making POST request to ${apiUrl}`);
     
-    // Create an AbortController for the main request with a longer timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+    // Initialize the Document AI client
+    const client = new DocumentProcessorServiceClient();
     
-    try {
-      // Prepare headers including Host header if using IP fallback
-      const headers: Record<string, string> = {
-        "accept": "application/json",
-        "Content-Type": "application/json",
-        "unstructured-api-key": apiKey,
-      };
-      
-      // Add Host header if using IP fallback to handle TLS certificate validation
-      if (usedFallbackIP) {
-        headers["Host"] = apiHostname;
-      }
-      
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: headers,
-        body: JSON.stringify(requestData),
-        signal: controller.signal
-      });
-      
-      // Clear the timeout since the request completed
-      clearTimeout(timeoutId);
-      
-      console.timeEnd('unstructured_api_call');
-      
-      console.log(`[Unstructured] Response status: ${response.status} ${response.statusText}`);
-      console.log(`[Unstructured] Response headers:`, Object.fromEntries(response.headers.entries()));
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        console.error(`[Unstructured] API Error ${response.status}: ${errorBody}`);
-        throw new Error(`Unstructured API failed with status ${response.status}: ${errorBody}`);
-      }
-
-      const elements: UnstructuredElement[] = await response.json();
-      console.log(`[Unstructured] Successfully processed. Received ${elements.length} elements.`);
-
-      if (!Array.isArray(elements)) {
-        console.error("[Unstructured] API response was not an array:", elements);
-        throw new Error("Invalid response format from Unstructured API");
-      }
-
-      const fullText = elements.map(el => el.text || '').join('\n\n');
-      console.log(`[Unstructured] Total extracted text length: ${fullText.length}`);
-
-      return { elements, fullText };
-    } catch (fetchError) {
-      // Handle fetch-specific errors
-      clearTimeout(timeoutId);
-      
-      // Add detailed logging for fetch errors including 'cause' property
-      console.error(`[Unstructured] Fetch error details for ${apiUrl}:`, fetchError);
-      
-      // Define NetworkError type for better typing
-      type NetworkError = { 
-        name?: string; 
-        code?: string; 
-        cause?: any;
-        message?: string;
-        stack?: string;
-        hostname?: string;
-        syscall?: string;
-      };
-      
-      const errorObj = fetchError as NetworkError;
-      
-      // Log the cause property for detailed network errors
-      if ('cause' in errorObj && errorObj.cause) {
-        console.error(`[Unstructured] Fetch Error Cause Details:`, JSON.stringify(errorObj.cause, null, 2));
-        // Try to access common network error properties
-        const causeObj = errorObj.cause as NetworkError;
-        if(causeObj.code) console.error(`[Unstructured] Cause Code: ${causeObj.code}`);
-        if(causeObj.syscall) console.error(`[Unstructured] Cause Syscall: ${causeObj.syscall}`);
-        if(causeObj.hostname) console.error(`[Unstructured] Cause Hostname: ${causeObj.hostname}`);
-      }
-      
-      if (errorObj.name === 'AbortError') {
-        console.error(`[Unstructured] Request timed out after 60 seconds`);
-        throw new Error(`Unstructured API request timed out after 60 seconds`);
-      } else if (errorObj.code === 'ENOTFOUND') {
-        if (!usedFallbackIP) {
-          console.error(`[Unstructured] Primary DNS resolution failed - Cannot resolve ${apiHostname}`);
-          console.error(`[Unstructured] Attempting to use IP fallbacks for retry...`);
-          
-          // Try each fallback IP in sequence
-          for (let i = 0; i < apiFallbackIPs.length; i++) {
-            const currentFallbackIP = apiFallbackIPs[i];
-            apiUrl = `https://${currentFallbackIP}${apiPath}`;
-            usedFallbackIP = true;
-            
-            // Try with this fallback IP
-            console.log(`[Unstructured] Retrying request with IP address ${currentFallbackIP} (attempt ${i+1}/${apiFallbackIPs.length})...`);
-            
-            const fallbackController = new AbortController();
-            const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 60000);
-            
-            try {
-              const fallbackResponse = await fetch(apiUrl, {
-                method: "POST",
-                headers: {
-                  "accept": "application/json",
-                  "Content-Type": "application/json",
-                  "unstructured-api-key": apiKey,
-                  "Host": apiHostname // Add Host header for TLS certificate validation
-                },
-                body: JSON.stringify(requestData),
-                signal: fallbackController.signal
-              });
-              
-              clearTimeout(fallbackTimeoutId);
-              
-              if (!fallbackResponse.ok) {
-                const fallbackErrorBody = await fallbackResponse.text();
-                console.error(`[Unstructured] Fallback API call to ${currentFallbackIP} failed with status ${fallbackResponse.status}: ${fallbackErrorBody}`);
-                // Continue to next IP if available
-                continue;
-              }
-              
-              // Success with this fallback IP
-              console.log(`[Unstructured] Fallback API call to ${currentFallbackIP} succeeded!`);
-              const fallbackElements: UnstructuredElement[] = await fallbackResponse.json();
-              console.log(`[Unstructured] Received ${fallbackElements.length} elements.`);
-              
-              const fallbackFullText = fallbackElements.map(el => el.text || '').join('\n\n');
-              return { elements: fallbackElements, fullText: fallbackFullText };
-            } catch (fallbackError) {
-              clearTimeout(fallbackTimeoutId);
-              console.error(`[Unstructured] Fallback API call to ${currentFallbackIP} failed:`, fallbackError);
-              // Log detailed error for this fallback attempt
-              if (fallbackError instanceof Error && 'cause' in fallbackError && fallbackError.cause) {
-                console.error(`[Unstructured] Fallback Error Cause for ${currentFallbackIP}:`, 
-                  JSON.stringify(fallbackError.cause, null, 2));
-              }
-              // Continue to next IP if available
-            }
-          }
-          
-          // If we get here, all fallbacks failed
-          console.error(`[Unstructured] All fallback IPs failed - this is a critical network issue`);
-          throw new Error(`Failed to connect to Unstructured API after trying hostname and ${apiFallbackIPs.length} fallback IPs.`);
-        } else {
-          console.error(`[Unstructured] Both hostname and IP fallback failed - this is a critical network issue`);
-          throw new Error(`Critical network issue: Cannot connect to Unstructured API via hostname or IP address. This is likely a network connectivity issue in the Vercel environment.`);
-        }
-      }
-      
-      // Re-throw the original error
-      throw fetchError;
+    // Download the file content from URL
+    console.log('[Document AI] Downloading file from URL...');
+    console.time('documentai_download');
+    const fileResponse = await fetch(fileUrl);
+    
+    if (!fileResponse.ok) {
+      throw new Error(`Failed to download file: ${fileResponse.status} ${fileResponse.statusText}`);
     }
+    
+    const fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
+    console.timeEnd('documentai_download');
+    console.log(`[Document AI] Downloaded file size: ${fileBuffer.length} bytes`);
+    
+    // Encode file to base64
+    const encodedFile = fileBuffer.toString('base64');
+    
+    // Construct the processor name
+    const name = `projects/${projectId}/locations/${location}/processors/${processorId}`;
+    console.log(`[Document AI] Using processor: ${name}`);
+    
+    // Prepare request for Document AI
+    const request = {
+      name,
+      rawDocument: {
+        content: encodedFile,
+        mimeType: fileType,
+      },
+    };
+    
+    // Process document
+    console.log('[Document AI] Sending document for processing...');
+    console.time('documentai_process');
+    const [result] = await client.processDocument(request);
+    console.timeEnd('documentai_process');
+    
+    // Extract text from document
+    const document = result.document;
+    // Explicitly handle the possibility of null or undefined with type assertion
+    const fullText = document && document.text ? String(document.text) : '';
+    
+    if (!fullText || fullText.trim().length === 0) {
+      throw new Error('No text extracted from document by Document AI');
+    }
+    
+    console.log(`[Document AI] Successfully extracted text. Length: ${fullText.length} characters`);
+    
+    return { fullText };
   } catch (error) {
-    console.error("[Unstructured] Failed to process document:", error);
-    // Add more context to the error
+    console.error('[Document AI] Error processing document:', error);
+    
+    // Provide detailed error information
     if (error instanceof Error) {
-      console.error("[Unstructured] Error name:", error.name);
-      console.error("[Unstructured] Error message:", error.message);
-      console.error("[Unstructured] Error stack:", error.stack);
-      
-      // Log the 'cause' property for detailed DNS/network errors
-      if ('cause' in error && error.cause) {
-        // Create a more specific type that includes hostname
-        type NetworkError = NodeJS.ErrnoException & { 
-          hostname?: string; 
-        };
-        
-        const causeError = error.cause as NetworkError; // Type assertion
-        console.error(`[Unstructured] Error Cause Details:`, JSON.stringify(error.cause, null, 2));
-        if(causeError.code) console.error(`[Unstructured] Cause Code: ${causeError.code}`); // Should be ENOTFOUND
-        if(causeError.syscall) console.error(`[Unstructured] Cause Syscall: ${causeError.syscall}`); // e.g., 'getaddrinfo'
-        if(causeError.hostname) console.error(`[Unstructured] Cause Hostname: ${causeError.hostname}`); // The hostname that failed lookup
-      }
+      console.error('[Document AI] Error name:', error.name);
+      console.error('[Document AI] Error message:', error.message);
+      console.error('[Document AI] Error stack:', error.stack);
       
       // Create a more descriptive error
-      const enhancedError = new Error(`Unstructured API error: ${error.message}`);
+      const enhancedError = new Error(`Document AI error: ${error.message}`);
       enhancedError.stack = error.stack;
       throw enhancedError;
-    } else {
-      console.error(`[Unstructured] Caught non-Error object:`, JSON.stringify(error, null, 2));
-      throw error;
     }
+    
+    throw error;
   }
 }
 
@@ -344,10 +156,13 @@ export async function processFileForRag({
   let failedUpsertBatches = 0;
 
   try {
-    // Validate Unstructured API Key
-    const unstructuredApiKey = process.env.UNSTRUCTURED_API_KEY;
-    if (!unstructuredApiKey) {
-      throw new Error('UNSTRUCTURED_API_KEY environment variable is not set');
+    // Validate Document AI environment variables
+    const projectId = process.env.DOCUMENT_AI_PROJECT_ID;
+    const location = process.env.DOCUMENT_AI_LOCATION;
+    const processorId = process.env.DOCUMENT_AI_PROCESSOR_ID;
+    
+    if (!projectId || !location || !processorId) {
+      throw new Error('Document AI environment variables not set. Check DOCUMENT_AI_PROJECT_ID, DOCUMENT_AI_LOCATION, and DOCUMENT_AI_PROCESSOR_ID');
     }
 
     // Get document details
@@ -377,15 +192,15 @@ export async function processFileForRag({
       throw statusError;
     }
 
-    // Extract text using Unstructured API
-    console.log(`[RAG Processor] Sending URL to Unstructured API for ${documentId}`);
-    const { elements, fullText } = await extractTextWithUnstructured(fileUrl, unstructuredApiKey);
-    console.log(`[RAG Processor] Text extraction via Unstructured completed for ${documentId}`);
+    // Extract text using Google Cloud Document AI
+    console.log(`[RAG Processor] Sending URL to Google Cloud Document AI for ${documentId}`);
+    const { fullText } = await extractTextWithGoogleDocumentAI(fileUrl, fileType);
+    console.log(`[RAG Processor] Text extraction via Google Cloud Document AI completed for ${documentId}`);
 
     // Process text chunks
     console.log("[RAG Processor] Using local chunkText function.");
     if (!fullText || fullText.trim().length === 0) {
-      throw new Error('No meaningful text extracted from document via Unstructured.');
+      throw new Error('No meaningful text extracted from document via Google Cloud Document AI.');
     }
     const textChunks = chunkText(fullText);
     console.log(`[RAG Processor] Prepared ${textChunks.length} chunks for embedding.`);
