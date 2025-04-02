@@ -12,6 +12,7 @@ import {
   getChatById,
   saveChat,
   saveMessages,
+  getDocumentById,
 } from '@/lib/db/queries';
 import {
   generateUUID,
@@ -66,6 +67,88 @@ function ensureAttachmentsHaveContentType(messages: Array<UIMessage>): Array<UIM
   });
 }
 
+/**
+ * Enhanced version that fetches document metadata from the database for attachments
+ * to ensure proper content types are used instead of application/octet-stream
+ */
+async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promise<Array<UIMessage>> {
+  // If no messages have attachments, return early
+  if (!messages.some(m => m.experimental_attachments && m.experimental_attachments.length > 0)) {
+    return messages;
+  }
+
+  try {
+    // Process each message
+    const enhancedMessages = await Promise.all(messages.map(async message => {
+      if (!message.experimental_attachments || message.experimental_attachments.length === 0) {
+        return message;
+      }
+      
+      // Process each attachment in this message
+      const enhancedAttachments = await Promise.all(message.experimental_attachments.map(async attachment => {
+        // If contentType exists and is not empty and not application/octet-stream, keep it
+        if (attachment.contentType && 
+            attachment.contentType.trim() !== '' && 
+            attachment.contentType !== 'application/octet-stream') {
+          return attachment;
+        }
+        
+        // Extract document ID from the URL or name field if present
+        let documentId = '';
+        
+        // Check if URL contains a UUID pattern that might be a document ID
+        const urlMatch = attachment.url?.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i);
+        if (urlMatch && urlMatch[1]) {
+          documentId = urlMatch[1];
+        }
+        
+        // If we have a potential document ID, try to fetch it
+        if (documentId) {
+          try {
+            console.log(`[Attachment Fix] Looking up document metadata for ID: ${documentId}`);
+            const doc = await getDocumentById({ id: documentId });
+            
+            if (doc && doc.fileType && doc.fileType.trim() !== '') {
+              console.log(`[Attachment Fix] Found document with type: ${doc.fileType} for ID: ${documentId}`);
+              return { 
+                ...attachment, 
+                contentType: doc.fileType 
+              };
+            }
+          } catch (error) {
+            console.error(`[Attachment Fix] Error fetching document metadata:`, error);
+            // Continue with basic inference if we can't fetch metadata
+          }
+        }
+        
+        // Fallback to basic inference from filename
+        const filename = attachment.name?.toLowerCase() || '';
+        let inferredContentType = attachment.contentType || ''; // Keep original if it existed but was empty
+        
+        if (!inferredContentType || inferredContentType === 'application/octet-stream') {
+          if (filename.endsWith('.pdf')) inferredContentType = 'application/pdf';
+          else if (filename.endsWith('.txt')) inferredContentType = 'text/plain';
+          else if (filename.endsWith('.docx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) inferredContentType = 'image/jpeg';
+          else if (filename.endsWith('.png')) inferredContentType = 'image/png';
+          else inferredContentType = 'application/octet-stream'; // Last resort fallback
+        }
+        
+        console.log(`[Attachment Fix] Name='${filename || 'N/A'}', OriginalType='${attachment.contentType || ''}', FinalType='${inferredContentType}'`);
+        return { ...attachment, contentType: inferredContentType };
+      }));
+      
+      return { ...message, experimental_attachments: enhancedAttachments };
+    }));
+    
+    return enhancedMessages;
+  } catch (error) {
+    console.error('[Attachment Fix] Error enhancing attachments with metadata:', error);
+    // Fall back to the basic function if anything goes wrong
+    return ensureAttachmentsHaveContentType(messages);
+  }
+}
+
 export async function POST(request: Request) {
   // Start timing the entire POST handler
   console.time('total_request_duration');
@@ -88,8 +171,10 @@ export async function POST(request: Request) {
 
     console.log("Request parsed: ", { id, messageCount: originalMessages.length, selectedChatModel });
 
-    // Ensure attachments have content types
-    const messages = ensureAttachmentsHaveContentType(originalMessages);
+    // Enhanced attachment processing with metadata from database
+    console.time('enhance_attachments');
+    const messages = await enhanceAttachmentsWithMetadata(originalMessages);
+    console.timeEnd('enhance_attachments');
 
     console.time('authenticate_user');
     const session = await auth();
