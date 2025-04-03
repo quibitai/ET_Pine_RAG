@@ -211,14 +211,13 @@ export async function saveDocument({
       userId,
       fileName,
       fileType: fileType ?? 'unknown',
-      fileSize: fileSize.toString(), // Convert to string for varchar column
+      fileSize: Number(fileSize ?? 0), // Ensure value is Number
       blobUrl: blobUrl ?? '', // Provide default
       processingStatus: processingStatus ?? 'pending',
       statusMessage,
       totalChunks,
-      processedChunks: processedChunks ?? 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      processedChunks: processedChunks ?? 0
+      // Let the database defaults handle createdAt and updatedAt
     }).returning();
     
     console.log('Document successfully saved to database. ID:', id);
@@ -441,11 +440,10 @@ export async function addUploadedFileMetadata({
       fileName,
       fileType,
       blobUrl: fileUrl,
-      fileSize,
+      fileSize: Number(fileSize), // Ensure it's a number
       processingStatus: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date(),
       processedChunks: 0
+      // Let the database defaults handle createdAt and updatedAt
     });
     
     console.log('Document metadata successfully saved to database. Result:', result);
@@ -660,12 +658,11 @@ export async function saveQueuedDocument({
       userId,
       fileName,
       fileType,
-      fileSize,
+      fileSize: Number(fileSize), // Ensure it's a number
       blobUrl,
       processingStatus: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date(),
       processedChunks: 0
+      // Let the database defaults handle createdAt and updatedAt
     }).returning();
     
     console.log(`Saved queued document ${id}`);

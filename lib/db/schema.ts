@@ -110,7 +110,7 @@ export const documents = pgTable('documents', {
   userId: text('user_id').notNull(),
   fileName: text('fileName').notNull(),
   fileType: text('fileType').notNull(),
-  fileSize: varchar('fileSize', { length: 20 }).notNull(),
+  fileSize: integer('fileSize').notNull(),
   blobUrl: text('fileUrl').notNull(),
   processingStatus: text('processingStatus').notNull().default('pending'),
   statusMessage: text('status_message'),
