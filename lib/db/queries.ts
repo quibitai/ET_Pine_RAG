@@ -427,7 +427,7 @@ export async function addUploadedFileMetadata({
   fileName: string;
   fileType: string;
   fileUrl: string;
-  fileSize: string;
+  fileSize: number;
 }) {
   try {
     console.log('addUploadedFileMetadata called with:', { 
@@ -440,12 +440,12 @@ export async function addUploadedFileMetadata({
       userId,
       fileName,
       fileType,
-      fileUrl,
+      blobUrl: fileUrl,
       fileSize,
-      title: fileName, // Use the fileName as the title
-      kind: 'text', // Default kind for RAG documents
-      processingStatus: 'pending', // Initial status for RAG processing
+      processingStatus: 'pending',
       createdAt: new Date(),
+      updatedAt: new Date(),
+      processedChunks: 0
     });
     
     console.log('Document metadata successfully saved to database. Result:', result);
