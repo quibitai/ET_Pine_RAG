@@ -2,8 +2,6 @@ import { config } from 'dotenv';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
-import * as fs from 'fs';
-import * as path from 'path';
 
 config({
   path: '.env.local',
@@ -19,25 +17,13 @@ const runMigrate = async () => {
 
   console.log('⏳ Running migrations...');
 
-  // First, run normal migrations
+  const start = Date.now();
   await migrate(db, { migrationsFolder: './lib/db/migrations' });
+  const end = Date.now();
 
-  // Then run our custom migration to add timestamp columns
-  const customMigrationPath = path.join(process.cwd(), 'lib/db/migrations-custom/0008_add_missing_timestamp_columns.sql');
-  if (fs.existsSync(customMigrationPath)) {
-    console.log('⏳ Running custom timestamp migration...');
-    try {
-      const sql = fs.readFileSync(customMigrationPath, 'utf8');
-      await connection.unsafe(sql);
-      console.log('✅ Custom timestamp migration completed');
-    } catch (error) {
-      console.error('❌ Custom migration failed');
-      console.error(error);
-    }
-  }
-
+  console.log('✅ Migrations completed in', end - start, 'ms');
   await connection.end();
-  console.log('✅ Migrations completed');
+  process.exit(0);
 };
 
 runMigrate().catch((err) => {
