@@ -11,7 +11,7 @@ import {
 import { ArtifactKind, UIArtifact } from './artifact';
 import { FileIcon, FullscreenIcon, ImageIcon, LoaderIcon } from './icons';
 import { cn, fetcher } from '@/lib/utils';
-import { Document } from '@/lib/db/schema';
+import { Document, ArtifactDocument } from '@/lib/db/schema';
 import { InlineDocumentSkeleton } from './document-skeleton';
 import useSWR from 'swr';
 import { Editor } from './text-editor';
@@ -21,6 +21,7 @@ import { useArtifact } from '@/hooks/use-artifact';
 import equal from 'fast-deep-equal';
 import { SpreadsheetEditor } from './sheet-editor';
 import { ImageEditor } from './image-editor';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface DocumentPreviewProps {
   isReadonly: boolean;
@@ -84,23 +85,25 @@ export function DocumentPreview({
     return <LoadingSkeleton artifactKind={result.kind ?? args.kind} />;
   }
 
-  const document: Document | null = previewDocument
-    ? previewDocument
+  const document: ArtifactDocument | null = previewDocument
+    ? previewDocument as ArtifactDocument
     : artifact.status === 'streaming'
       ? {
-          title: artifact.title,
-          kind: ['text', 'code', 'image', 'sheet'].includes(artifact.kind) 
-            ? artifact.kind as 'text' | 'code' | 'image' | 'sheet'
-            : 'text',
-          content: artifact.content,
           id: artifact.documentId,
           createdAt: new Date(),
+          updatedAt: new Date(),
           userId: 'noop',
-          fileUrl: null,
-          fileName: null,
-          fileSize: null,
-          fileType: null,
-          processingStatus: null
+          fileName: artifact.title ?? 'Untitled',
+          fileType: 'text/plain',
+          fileSize: 0,
+          blobUrl: '',
+          processingStatus: 'pending',
+          statusMessage: null,
+          totalChunks: null,
+          processedChunks: 0,
+          title: artifact.title ?? 'Untitled',
+          kind: artifact.kind ?? 'text',
+          content: artifact.content ?? ''
         }
       : null;
 
@@ -114,10 +117,8 @@ export function DocumentPreview({
         setArtifact={setArtifact}
       />
       <DocumentHeader
-        title={document.title}
-        kind={['text', 'code', 'image', 'sheet'].includes(document.kind) 
-          ? document.kind as 'text' | 'code' | 'image' | 'sheet'
-          : 'text'}
+        title={document.title || 'Untitled'}
+        kind={(document.kind as ArtifactKind) || 'text'}
         isStreaming={artifact.status === 'streaming'}
       />
       <DocumentContent document={document} />
@@ -243,7 +244,7 @@ const DocumentHeader = memo(PureDocumentHeader, (prevProps, nextProps) => {
   return true;
 });
 
-const DocumentContent = ({ document }: { document: Document }) => {
+const DocumentContent = ({ document }: { document: ArtifactDocument }) => {
   const { artifact } = useArtifact();
 
   const containerClassName = cn(
