@@ -68,12 +68,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Save document metadata to database
     await saveDocument({
       id: documentId,
-      title: file.name,
-      kind: ArtifactKind.Text,
       userId: userId,
-      fileUrl: url,
+      blobUrl: url,
       fileName: file.name,
-      fileSize: file.size.toString(),
+      fileSize: file.size,
       fileType: file.type,
       processingStatus: 'pending'
     });
