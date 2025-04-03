@@ -5,6 +5,7 @@ import {
   getDocumentsById,
   saveDocument,
 } from '@/lib/db/queries';
+import { Document } from '@/lib/db/schema';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -21,8 +22,7 @@ export async function GET(request: Request) {
   }
 
   const documents = await getDocumentsById({ id });
-
-  const [document] = documents;
+  const document = documents[0] as Document | undefined;
 
   if (!document) {
     return new Response('Not Found', { status: 404 });
@@ -88,8 +88,11 @@ export async function PATCH(request: Request) {
   }
 
   const documents = await getDocumentsById({ id });
+  const document = documents[0] as Document | undefined;
 
-  const [document] = documents;
+  if (!document) {
+    return new Response('Not Found', { status: 404 });
+  }
 
   if (document.userId !== session.user.id) {
     return new Response('Unauthorized', { status: 401 });
