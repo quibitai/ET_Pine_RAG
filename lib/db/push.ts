@@ -23,7 +23,7 @@ const runPush = async () => {
     
     await connection.unsafe(`
       -- Rename columns if they exist
-      DO $$ 
+      DO $$
       BEGIN
         -- Check if created_at exists and createdAt doesn't
         IF EXISTS (
@@ -108,39 +108,32 @@ const runPush = async () => {
           SELECT FROM information_schema.columns 
           WHERE table_name = 'documents' AND column_name = 'title'
         ) THEN
-          -- Check if title column has a NOT NULL constraint
-          IF EXISTS (
-            SELECT FROM information_schema.table_constraints tc
-            JOIN information_schema.constraint_column_usage ccu 
-              ON tc.constraint_name = ccu.constraint_name
-            WHERE tc.constraint_type = 'CHECK' 
-              AND ccu.table_name = 'documents' 
-              AND ccu.column_name = 'title'
-          ) THEN
-            -- Make title column nullable first
-            ALTER TABLE "documents" ALTER COLUMN "title" DROP NOT NULL;
-          END IF;
+          -- Make title column nullable first
+          ALTER TABLE "documents" ALTER COLUMN "title" DROP NOT NULL;
           
           -- Set title to be equal to fileName for all rows where title is NULL
           UPDATE "documents" SET "title" = "fileName" WHERE "title" IS NULL;
           
           -- Add a trigger to auto-populate title from fileName on insert
           DROP TRIGGER IF EXISTS set_title_from_filename ON "documents";
-          CREATE OR REPLACE FUNCTION set_title_from_filename() RETURNS TRIGGER AS $$
+          
+          CREATE OR REPLACE FUNCTION set_title_from_filename() 
+          RETURNS TRIGGER AS $trigger$
           BEGIN
             IF NEW.title IS NULL THEN
               NEW.title := NEW.fileName;
             END IF;
             RETURN NEW;
           END;
-          $$ LANGUAGE plpgsql;
+          $trigger$ LANGUAGE plpgsql;
           
           CREATE TRIGGER set_title_from_filename
           BEFORE INSERT ON "documents"
           FOR EACH ROW
           EXECUTE FUNCTION set_title_from_filename();
         END IF;
-      END $$;
+      END
+      $$;
     `);
 
     console.log('✅ Database schema updated successfully');
