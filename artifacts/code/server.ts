@@ -1,8 +1,22 @@
 import { z } from 'zod';
-import { streamObject } from 'ai';
+import { streamObject, DataStreamWriter } from 'ai';
 import { myProvider } from '@/lib/ai/providers';
 import { codePrompt, updateDocumentPrompt } from '@/lib/ai/prompts';
-import { createDocumentHandler } from '@/lib/artifacts/server';
+import { createDocumentHandler, UpdateDocumentCallbackProps } from '@/lib/artifacts/server';
+import { Document as DbDocument } from '@/lib/db/schema';
+import { Session } from 'next-auth';
+
+// Extend the database Document type with the content field needed for artifacts
+interface ArtifactDocument extends DbDocument {
+  content: string;
+  title: string;
+  kind: string;
+}
+
+// Type guard function to check if document has content property
+function hasContent(doc: any): doc is { content: string } {
+  return doc && typeof doc.content === 'string';
+}
 
 export const codeDocumentHandler = createDocumentHandler<'code'>({
   kind: 'code',
@@ -38,8 +52,13 @@ export const codeDocumentHandler = createDocumentHandler<'code'>({
 
     return draftContent;
   },
-  onUpdateDocument: async ({ document, description, dataStream }) => {
+  onUpdateDocument: async ({ document, description, dataStream, session }) => {
     let draftContent = '';
+
+    // Verify document has content property
+    if (!hasContent(document)) {
+      throw new Error('Document is missing required content property');
+    }
 
     const { fullStream } = streamObject({
       model: myProvider.languageModel('artifact-model'),
