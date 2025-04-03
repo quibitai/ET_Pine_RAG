@@ -186,7 +186,6 @@ export async function saveDocument({
   statusMessage,
   totalChunks,
   processedChunks,
-  content, // Keep for backward compatibility with ArtifactDocument
 }: {
   id: string;
   userId: string;
@@ -198,7 +197,6 @@ export async function saveDocument({
   statusMessage?: string;
   totalChunks?: number;
   processedChunks?: number;
-  content?: string; // Not stored in DB, but kept for compatibility
 }) {
   try {
     console.log('saveDocument called with:', { 
@@ -206,7 +204,6 @@ export async function saveDocument({
       fileSize: fileSize.toString(), // Convert to string for logging
       blobUrl: blobUrl?.substring(0, 30) + '...', // Truncate for logging
       processingStatus, statusMessage, totalChunks, processedChunks,
-      contentLength: content ? content.length : 0,
     });
     
     const [insertedDocument] = await db.insert(documents).values({
@@ -214,7 +211,7 @@ export async function saveDocument({
       userId,
       fileName,
       fileType: fileType ?? 'unknown',
-      fileSize: fileSize ?? 0, // Provide default
+      fileSize: Number(fileSize ?? 0), // Force conversion to number
       blobUrl: blobUrl ?? '', // Provide default
       processingStatus: processingStatus ?? 'pending',
       statusMessage,
