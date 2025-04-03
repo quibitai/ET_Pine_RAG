@@ -116,6 +116,7 @@ export const documents = pgTable('documents', {
   statusMessage: text('status_message'),
   totalChunks: integer('total_chunks'),
   processedChunks: integer('processed_chunks').notNull().default(0),
+  title: text('title').notNull(),
 });
 
 export type Document = InferSelectModel<typeof documents>;
@@ -123,7 +124,6 @@ export type Document = InferSelectModel<typeof documents>;
 // Extended Document type for use with the artifact system
 export interface ArtifactDocument extends Document {
   content?: string;
-  title?: string;
   kind?: string;
 }
 

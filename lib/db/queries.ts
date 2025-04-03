@@ -219,6 +219,8 @@ export async function saveDocument({
       processedChunks: processedChunks ?? 0,
       createdAt: new Date(),     // Explicitly set createdAt
       updatedAt: new Date(),     // Explicitly set updatedAt
+      // @ts-ignore - Title column exists in database but not in our schema
+      title: fileName,           // Set title to fileName to satisfy NOT NULL constraint
     }).returning();
     
     console.log('Document successfully saved to database. ID:', id);
@@ -446,6 +448,8 @@ export async function addUploadedFileMetadata({
       processedChunks: 0,
       createdAt: new Date(),     // Explicitly set createdAt
       updatedAt: new Date(),     // Explicitly set updatedAt
+      // @ts-ignore - Title column exists in database but not in our schema
+      title: fileName,           // Set title to fileName to satisfy NOT NULL constraint
     });
     
     console.log('Document metadata successfully saved to database. Result:', result);
@@ -564,6 +568,8 @@ export async function createDocument({
         processingStatus: 'pending',
         createdAt: new Date(),     // Explicitly set createdAt
         updatedAt: new Date(),     // Explicitly set updatedAt
+        // @ts-ignore - Title column exists in database but not in our schema
+        title: fileName,           // Set title to fileName to satisfy NOT NULL constraint
       })
       .returning();
     
@@ -668,6 +674,8 @@ export async function saveQueuedDocument({
       processedChunks: 0,
       createdAt: new Date(),     // Explicitly set createdAt
       updatedAt: new Date(),     // Explicitly set updatedAt
+      // @ts-ignore - Title column exists in database but not in our schema
+      title: fileName,           // Set title to fileName to satisfy NOT NULL constraint
     }).returning();
     
     console.log(`Saved queued document ${id}`);
