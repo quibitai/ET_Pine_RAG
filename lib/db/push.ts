@@ -102,6 +102,17 @@ const runPush = async () => {
           ALTER TABLE "documents" RENAME COLUMN "processing_status" TO "processingStatus";
         END IF;
 
+        -- Check if user_id exists and userId doesn't
+        IF EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'user_id'
+        ) AND NOT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'userId'
+        ) THEN
+          ALTER TABLE "documents" RENAME COLUMN "user_id" TO "userId";
+        END IF;
+
         -- Handle special case for title column that's not in our schema
         -- Check if the title column exists
         IF EXISTS (

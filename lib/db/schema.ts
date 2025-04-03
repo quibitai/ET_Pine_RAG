@@ -107,7 +107,7 @@ export const documents = pgTable('documents', {
   id: uuid('id').defaultRandom().primaryKey(),
   createdAt: timestamp('createdAt').defaultNow().notNull(),
   updatedAt: timestamp('updatedAt').defaultNow().notNull(),
-  userId: text('user_id').notNull(),
+  userId: text('userId').notNull(),
   fileName: text('fileName').notNull(),
   fileType: text('fileType').notNull(),
   fileSize: integer('fileSize').notNull(),
