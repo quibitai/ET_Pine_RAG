@@ -1,36 +1,54 @@
--- First, rename the existing table instead of dropping it
-ALTER TABLE "Document" RENAME TO "documents";
+-- First, check if the old table exists and rename it if it does
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'Document') THEN
+    ALTER TABLE "Document" RENAME TO "documents";
+  END IF;
+END $$;
 --> statement-breakpoint
 
--- Add the new columns to the table
-ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "created_at" timestamp DEFAULT now() NOT NULL;
-ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "updated_at" timestamp DEFAULT now() NOT NULL;
-ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "user_id" text;
-UPDATE "documents" SET "user_id" = "userId" WHERE "user_id" IS NULL;
-ALTER TABLE "documents" ALTER COLUMN "user_id" SET NOT NULL;
+-- Only add the required new columns (status_message, total_chunks, processed_chunks)
+-- These are the ones we really need for the chunked processing feature
+DO $$ 
+BEGIN
+  -- Add status_message if it doesn't exist
+  IF NOT EXISTS (SELECT FROM pg_attribute 
+                WHERE attrelid = 'public.documents'::regclass
+                AND attname = 'status_message'
+                AND NOT attisdropped) THEN
+    ALTER TABLE "documents" ADD COLUMN "status_message" text;
+  END IF;
+
+  -- Add total_chunks if it doesn't exist
+  IF NOT EXISTS (SELECT FROM pg_attribute 
+                WHERE attrelid = 'public.documents'::regclass
+                AND attname = 'total_chunks'
+                AND NOT attisdropped) THEN
+    ALTER TABLE "documents" ADD COLUMN "total_chunks" integer;
+  END IF;
+
+  -- Add processed_chunks if it doesn't exist
+  IF NOT EXISTS (SELECT FROM pg_attribute 
+                WHERE attrelid = 'public.documents'::regclass
+                AND attname = 'processed_chunks'
+                AND NOT attisdropped) THEN
+    ALTER TABLE "documents" ADD COLUMN "processed_chunks" integer DEFAULT 0 NOT NULL;
+  END IF;
+END $$;
 --> statement-breakpoint
 
--- Rename the old columns to match the new schema
-ALTER TABLE "documents" RENAME COLUMN "createdAt" TO "created_at";
-ALTER TABLE "documents" RENAME COLUMN "userId" TO "user_id";
-ALTER TABLE "documents" RENAME COLUMN "fileName" TO "file_name";
-ALTER TABLE "documents" RENAME COLUMN "fileType" TO "file_type";
-ALTER TABLE "documents" RENAME COLUMN "fileSize" TO "file_size";
-ALTER TABLE "documents" RENAME COLUMN "fileUrl" TO "blob_url";
-ALTER TABLE "documents" RENAME COLUMN "processingStatus" TO "processing_status";
---> statement-breakpoint
+-- Update foreign key constraints if needed
+DO $$ 
+BEGIN
+  -- Only drop the constraint if it exists
+  IF EXISTS (SELECT FROM pg_constraint 
+            WHERE conname = 'Suggestion_documentId_documentCreatedAt_Document_id_createdAt_fk') THEN
+    ALTER TABLE "Suggestion" DROP CONSTRAINT "Suggestion_documentId_documentCreatedAt_Document_id_createdAt_fk";
 
--- Add the new columns
-ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "status_message" text;
-ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "total_chunks" integer;
-ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "processed_chunks" integer DEFAULT 0 NOT NULL;
---> statement-breakpoint
-
--- Update the foreign key constraints
-ALTER TABLE "Suggestion" DROP CONSTRAINT IF EXISTS "Suggestion_documentId_documentCreatedAt_Document_id_createdAt_fk";
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "Suggestion" ADD CONSTRAINT "Suggestion_documentId_documentCreatedAt_documents_id_created_at_fk" FOREIGN KEY ("documentId","documentCreatedAt") REFERENCES "public"."documents"("id","created_at") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
+    -- Add the new constraint referencing the renamed table
+    ALTER TABLE "Suggestion" ADD CONSTRAINT "Suggestion_documentId_documentCreatedAt_documents_id_created_at_fk" 
+      FOREIGN KEY ("documentId","documentCreatedAt") 
+      REFERENCES "public"."documents"("id","created_at") 
+      ON DELETE no action ON UPDATE no action;
+  END IF;
 END $$;
