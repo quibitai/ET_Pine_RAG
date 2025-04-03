@@ -59,15 +59,15 @@ export function createDocumentHandler<T extends ArtifactKind>(config: {
       if (args.session?.user?.id) {
         await saveDocument({
           id: args.id,
-          title: args.title,
-          content: draftContent,
-          kind: config.kind,
           userId: args.session.user.id,
           fileName: args.title,
-          fileType: 'text/plain',
-          fileSize: '0',
-          fileUrl: '',
-          processingStatus: 'completed'
+          fileType: config.kind === 'code' ? 'text/plain+code' :
+                    config.kind === 'image' ? 'image/png' :
+                    config.kind === 'sheet' ? 'text/csv' : 'text/plain',
+          fileSize: 0,
+          blobUrl: '',
+          processingStatus: 'completed',
+          content: draftContent
         });
       }
 
@@ -84,15 +84,13 @@ export function createDocumentHandler<T extends ArtifactKind>(config: {
       if (args.session?.user?.id) {
         await saveDocument({
           id: args.document.id,
-          title: args.document.fileName,
-          content: draftContent,
-          kind: config.kind,
           userId: args.session.user.id,
           fileName: args.document.fileName,
           fileType: args.document.fileType,
           fileSize: args.document.fileSize?.toString(),
-          fileUrl: args.document.blobUrl,
-          processingStatus: 'completed'
+          blobUrl: args.document.blobUrl,
+          processingStatus: 'completed',
+          content: draftContent
         });
       }
 
