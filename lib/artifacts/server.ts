@@ -14,6 +14,11 @@ export interface SaveDocumentProps {
   kind: ArtifactKind;
   content: string;
   userId: string;
+  fileName?: string;
+  fileType?: string;
+  fileSize?: string;
+  fileUrl?: string;
+  processingStatus?: 'pending' | 'processing' | 'completed' | 'failed';
 }
 
 export interface CreateDocumentCallbackProps {
@@ -58,6 +63,11 @@ export function createDocumentHandler<T extends ArtifactKind>(config: {
           content: draftContent,
           kind: config.kind,
           userId: args.session.user.id,
+          fileName: args.title,
+          fileType: 'text/plain',
+          fileSize: '0',
+          fileUrl: '',
+          processingStatus: 'completed'
         });
       }
 
@@ -74,10 +84,15 @@ export function createDocumentHandler<T extends ArtifactKind>(config: {
       if (args.session?.user?.id) {
         await saveDocument({
           id: args.document.id,
-          title: args.document.title,
+          title: args.document.fileName,
           content: draftContent,
           kind: config.kind,
           userId: args.session.user.id,
+          fileName: args.document.fileName,
+          fileType: args.document.fileType,
+          fileSize: args.document.fileSize?.toString(),
+          fileUrl: args.document.blobUrl,
+          processingStatus: 'completed'
         });
       }
 
