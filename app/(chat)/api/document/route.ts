@@ -61,10 +61,8 @@ export async function POST(request: Request) {
       id,
       userId: session.user.id,
       fileName: title,
-      fileType: kind === 'code' ? 'text/plain+code' : 
-                kind === 'image' ? 'image/png' : 
-                kind === 'sheet' ? 'text/csv' : 'text/plain',
-      fileSize: content ? Buffer.from(content).length : 0,
+      fileType: 'text/plain',
+      fileSize: 0,
       blobUrl: '',
       processingStatus: 'completed'
     });
