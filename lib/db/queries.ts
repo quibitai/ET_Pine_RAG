@@ -216,8 +216,9 @@ export async function saveDocument({
       processingStatus: processingStatus ?? 'pending',
       statusMessage,
       totalChunks,
-      processedChunks: processedChunks ?? 0
-      // Let the database defaults handle createdAt and updatedAt
+      processedChunks: processedChunks ?? 0,
+      createdAt: new Date(),     // Explicitly set createdAt
+      updatedAt: new Date(),     // Explicitly set updatedAt
     }).returning();
     
     console.log('Document successfully saved to database. ID:', id);
@@ -442,8 +443,9 @@ export async function addUploadedFileMetadata({
       blobUrl: fileUrl,
       fileSize: Number(fileSize), // Ensure it's a number
       processingStatus: 'pending',
-      processedChunks: 0
-      // Let the database defaults handle createdAt and updatedAt
+      processedChunks: 0,
+      createdAt: new Date(),     // Explicitly set createdAt
+      updatedAt: new Date(),     // Explicitly set updatedAt
     });
     
     console.log('Document metadata successfully saved to database. Result:', result);
@@ -560,6 +562,8 @@ export async function createDocument({
         fileSize,
         blobUrl,
         processingStatus: 'pending',
+        createdAt: new Date(),     // Explicitly set createdAt
+        updatedAt: new Date(),     // Explicitly set updatedAt
       })
       .returning();
     
@@ -661,8 +665,9 @@ export async function saveQueuedDocument({
       fileSize: Number(fileSize), // Ensure it's a number
       blobUrl,
       processingStatus: 'pending',
-      processedChunks: 0
-      // Let the database defaults handle createdAt and updatedAt
+      processedChunks: 0,
+      createdAt: new Date(),     // Explicitly set createdAt
+      updatedAt: new Date(),     // Explicitly set updatedAt
     }).returning();
     
     console.log(`Saved queued document ${id}`);
