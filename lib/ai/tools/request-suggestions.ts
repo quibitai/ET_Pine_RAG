@@ -25,9 +25,30 @@ export const requestSuggestions = ({
     execute: async ({ documentId }) => {
       const document = await getDocumentById({ id: documentId });
 
-      if (!document || !document.content) {
+      if (!document || !document.blobUrl) {
         return {
-          error: 'Document not found',
+          error: 'Document metadata or Blob URL not found',
+        };
+      }
+
+      // Fetch content from blobUrl
+      let fetchedContent: string | null = null;
+      try {
+        const response = await fetch(document.blobUrl);
+        if (!response.ok) {
+          console.error(`Failed to fetch content for ${documentId}: ${response.statusText}`);
+          return { error: `Failed to fetch document content: ${response.statusText}` };
+        }
+        fetchedContent = await response.text();
+      } catch (fetchError) {
+        console.error(`Error fetching content for ${documentId}:`, fetchError);
+        return { error: 'Failed to fetch document content' };
+      }
+
+      // Check if content is valid
+      if (!fetchedContent) {
+        return {
+          error: 'Document content is empty or could not be fetched',
         };
       }
 
@@ -39,7 +60,7 @@ export const requestSuggestions = ({
         model: myProvider.languageModel('artifact-model'),
         system:
           'You are a help writing assistant. Given a piece of writing, please offer suggestions to improve the piece of writing and describe the change. It is very important for the edits to contain full sentences instead of just words. Max 5 suggestions.',
-        prompt: document.content,
+        prompt: fetchedContent,
         output: 'array',
         schema: z.object({
           originalSentence: z.string().describe('The original sentence'),
@@ -81,8 +102,7 @@ export const requestSuggestions = ({
 
       return {
         id: documentId,
-        title: document.title,
-        kind: document.kind,
+        title: document.fileName,
         message: 'Suggestions have been added to the document',
       };
     },
