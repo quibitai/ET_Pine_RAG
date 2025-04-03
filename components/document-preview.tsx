@@ -282,7 +282,7 @@ const DocumentContent = ({ document }: { document: ArtifactDocument }) => {
         </div>
       ) : document.kind === 'image' ? (
         <ImageEditor
-          title={document.title}
+          title={document.fileName ?? document.title ?? 'Untitled Image'}
           content={document.content ?? ''}
           isCurrentVersion={true}
           currentVersionIndex={0}
