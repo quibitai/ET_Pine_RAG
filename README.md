@@ -2,6 +2,14 @@
 
 A Retrieval Augmented Generation (RAG) powered chatbot built with Next.js, Google AI SDK, Pinecone, and Vercel Blob storage.
 
+## Latest Release - v1.1
+
+* Fixed UUID validation in attachment processing to prevent database errors
+* Improved document ID extraction for file attachments
+* Enhanced error handling and logging for attachment content type detection
+
+[View all releases](https://github.com/quibitai/ET_Pine_RAG/releases)
+
 ## Features
 
 - **PDF, TXT, and DOCX document upload** with Google Document AI processing

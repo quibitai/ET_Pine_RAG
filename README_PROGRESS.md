@@ -2,6 +2,15 @@
 
 This document tracks the progress of our Retrieval-Augmented Generation (RAG) chatbot application.
 
+## Latest Update - v1.1 Release
+
+The ET Pine RAG application has been updated to version 1.1. This release includes:
+
+- **UUID Validation Fix**: Fixed UUID validation in the `enhanceAttachmentsWithMetadata` function to prevent "invalid input syntax for type uuid" database errors
+- **Improved Document ID Extraction**: Enhanced the methods for extracting document IDs from attachments
+- **Better Error Handling**: Added more robust error handling and validation for attachment metadata processing
+- **Enhanced Logging**: Improved diagnostic logging for attachment processing issues
+
 ## Completed Phases
 
 ### Phase 1: Setup & Model Integration ✅

@@ -202,4 +202,30 @@ We've successfully implemented Phase 4 with the following components:
   - Verify all features work together seamlessly
   - Test with real-world documents and queries
   - Check error handling and failure recovery
-  - Ensure all environment variables are correctly documented 
+  - Ensure all environment variables are correctly documented
+
+## Phase 8: Post-v1.0 Bug Fixes - v1.1 Release
+
+**Goal:** Address critical bugs discovered after the v1.0 release and improve system stability.
+
+- [x] **8.1 UUID Validation Fix:**
+  - Fix UUID validation in `enhanceAttachmentsWithMetadata` function to prevent "invalid input syntax for type uuid" database errors
+  - Add proper validation checks before attempting database queries
+  - Skip invalid database queries when document ID is not a valid UUID
+- [x] **8.2 Document ID Extraction Improvement:**
+  - Add explicit checking for document ID properties on attachment objects
+  - Improve extraction of document IDs from attachment URLs and names
+  - Remove problematic extraction methods that produced invalid IDs
+- [x] **8.3 Error Handling Enhancement:**
+  - Add better fallback mechanisms when document metadata cannot be retrieved
+  - Implement more robust validation checks throughout attachment processing
+  - Ensure graceful degradation when encountering attachment-related issues
+- [x] **8.4 Logging Improvements:**
+  - Add more detailed diagnostic logging for attachment processing
+  - Include validation status in logs to aid troubleshooting
+  - Log specific reasons why document IDs might be rejected
+- [x] **8.5 Documentation Updates:**
+  - Update README.md to note the v1.1 release
+  - Document the UUID validation improvements in README_PROGRESS.md
+  - Add Phase 8 to DEVELOPMENT_CHECKLIST.md
+  - Create v1.1 tag and release notes 
