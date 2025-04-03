@@ -12,7 +12,6 @@ import {
   user,
   chat,
   type User,
-  document,
   type Suggestion,
   suggestion,
   message,
@@ -22,7 +21,6 @@ import {
   Document,
 } from './schema';
 import { ArtifactKind } from '@/components/artifact';
-import { db } from '@/lib/db';
 
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
