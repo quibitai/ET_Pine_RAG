@@ -1,6 +1,8 @@
 import { myProvider } from '@/lib/ai/providers';
-import { createDocumentHandler } from '@/lib/artifacts/server';
-import { experimental_generateImage } from 'ai';
+import { createDocumentHandler, UpdateDocumentCallbackProps } from '@/lib/artifacts/server';
+import { experimental_generateImage, DataStreamWriter } from 'ai';
+import { Document } from '@/lib/db/schema';
+import { Session } from 'next-auth';
 
 export const imageDocumentHandler = createDocumentHandler<'image'>({
   kind: 'image',
@@ -22,7 +24,7 @@ export const imageDocumentHandler = createDocumentHandler<'image'>({
 
     return draftContent;
   },
-  onUpdateDocument: async ({ description, dataStream }) => {
+  onUpdateDocument: async ({ document, description, dataStream, session }) => {
     let draftContent = '';
 
     const { image } = await experimental_generateImage({

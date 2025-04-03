@@ -1,7 +1,14 @@
-import { smoothStream, streamText } from 'ai';
+import { smoothStream, streamText, DataStreamWriter } from 'ai';
 import { myProvider } from '@/lib/ai/providers';
-import { createDocumentHandler } from '@/lib/artifacts/server';
+import { createDocumentHandler, UpdateDocumentCallbackProps } from '@/lib/artifacts/server';
 import { updateDocumentPrompt } from '@/lib/ai/prompts';
+import { Document } from '@/lib/db/schema';
+import { Session } from 'next-auth';
+
+// Type guard function to check if document has content property
+function hasContent(doc: any): doc is { content: string } {
+  return doc && typeof doc.content === 'string';
+}
 
 export const textDocumentHandler = createDocumentHandler<'text'>({
   kind: 'text',
@@ -33,8 +40,13 @@ export const textDocumentHandler = createDocumentHandler<'text'>({
 
     return draftContent;
   },
-  onUpdateDocument: async ({ document, description, dataStream }) => {
+  onUpdateDocument: async ({ document, description, dataStream, session }) => {
     let draftContent = '';
+
+    // Verify document has content property
+    if (!hasContent(document)) {
+      throw new Error('Document is missing required content property');
+    }
 
     const { fullStream } = streamText({
       model: myProvider.languageModel('artifact-model'),
