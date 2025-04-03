@@ -66,8 +66,7 @@ export function createDocumentHandler<T extends ArtifactKind>(config: {
                     config.kind === 'sheet' ? 'text/csv' : 'text/plain',
           fileSize: 0,
           blobUrl: '',
-          processingStatus: 'completed',
-          content: draftContent
+          processingStatus: 'completed'
         });
       }
 
@@ -91,8 +90,7 @@ export function createDocumentHandler<T extends ArtifactKind>(config: {
                     ? parseInt(args.document.fileSize, 10) 
                     : args.document.fileSize || 0,
           blobUrl: args.document.blobUrl,
-          processingStatus: 'completed',
-          content: draftContent
+          processingStatus: 'completed'
         });
       }
 
