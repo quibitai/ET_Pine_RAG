@@ -13,12 +13,33 @@ const PROCESSOR_ID = process.env.DOCUMENT_AI_PROCESSOR_ID || '';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
 const QSTASH_TOKEN = process.env.QSTASH_TOKEN || '';
 const WORKER_URL = process.env.QSTASH_WORKER_URL || 'https://example.vercel.app/api/rag-worker';
+const GOOGLE_CREDENTIALS_JSON_CONTENT = process.env.GOOGLE_CREDENTIALS_JSON;
 
-// Initialize the Document AI client
-const documentClient = new DocumentProcessorServiceClient({
-  projectId: PROJECT_ID,
-  location: LOCATION,
-});
+// Initialize the Document AI client with explicit credentials
+let documentClient: DocumentProcessorServiceClient;
+
+if (!GOOGLE_CREDENTIALS_JSON_CONTENT) {
+  console.error("❌ CRITICAL: GOOGLE_CREDENTIALS_JSON environment variable is not set!");
+  // Throw an error immediately if credentials are required and missing
+  throw new Error("Server configuration error: Google Cloud credentials are missing.");
+} else {
+  try {
+    // Parse the JSON content to ensure it's valid
+    const credentials = JSON.parse(GOOGLE_CREDENTIALS_JSON_CONTENT);
+    
+    // Initialize client WITH credentials
+    documentClient = new DocumentProcessorServiceClient({
+      projectId: PROJECT_ID,
+      credentials,
+    });
+    console.log("✅ Document AI client initialized successfully using credentials from GOOGLE_CREDENTIALS_JSON.");
+  } catch (parseError) {
+    console.error("❌ CRITICAL: Failed to parse GOOGLE_CREDENTIALS_JSON content:", parseError);
+    console.error("Ensure the environment variable contains valid, unescaped JSON.");
+    // Throw error if parsing fails, as auth will not work
+    throw new Error("Server configuration error: Could not parse Google Cloud credentials JSON.");
+  }
+}
 
 // Initialize the Google Generative AI client
 const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
@@ -56,6 +77,11 @@ export async function extractTextWithGoogleDocumentAI(fileBytes: Uint8Array): Pr
     return document.text;
   } catch (error) {
     console.error('[RAG Processor] Error extracting text with Google Document AI:', error);
+    if (error instanceof Error && (error.message.includes('Could not load the default credentials') || 
+                                 error.message.includes('permission denied') || 
+                                 error.message.includes('invalid_grant'))) {
+      console.error("Authentication/Permission Error Detail: Verify GOOGLE_CREDENTIALS_JSON variable content and service account permissions in GCP console.");
+    }
     throw error;
   }
 }
