@@ -22,11 +22,8 @@ BEGIN
                 WHERE attrelid = 'public.documents'::regclass
                 AND attname = 'user_id'
                 AND NOT attisdropped) THEN
-    ALTER TABLE "documents" ADD COLUMN "user_id" text NOT NULL;
-    -- Note: This will fail on tables with existing data unless they're empty
-    -- For production with existing data, you might need:
-    -- 1. ALTER TABLE "documents" ADD COLUMN "user_id" text NULL;
-    -- 2. UPDATE "documents" SET "user_id" = 'default-user-id';
-    -- 3. ALTER TABLE "documents" ALTER COLUMN "user_id" SET NOT NULL;
+    -- Defaulting user_id to empty string for existing rows to satisfy NOT NULL constraint.
+    -- This allows the migration to complete, but these documents should be handled appropriately later.
+    ALTER TABLE "documents" ADD COLUMN "user_id" text NOT NULL DEFAULT '';
   END IF;
 END $$; 
