@@ -11,7 +11,7 @@ import {
 } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { useDebounceCallback, useWindowSize } from 'usehooks-ts';
-import type { Document, Vote } from '@/lib/db/schema';
+import type { Document, ArtifactDocument, Vote } from '@/lib/db/schema';
 import { fetcher } from '@/lib/utils';
 import { MultimodalInput } from './multimodal-input';
 import { Toolbar } from './toolbar';
@@ -96,14 +96,14 @@ function PureArtifact({
   );
 
   const [mode, setMode] = useState<'edit' | 'diff'>('edit');
-  const [document, setDocument] = useState<Document | null>(null);
+  const [document, setDocument] = useState<ArtifactDocument | null>(null);
   const [currentVersionIndex, setCurrentVersionIndex] = useState(-1);
 
   const { open: isSidebarOpen } = useSidebar();
 
   useEffect(() => {
     if (documents && documents.length > 0) {
-      const mostRecentDocument = documents.at(-1);
+      const mostRecentDocument = documents.at(-1) as ArtifactDocument;
 
       if (mostRecentDocument) {
         setDocument(mostRecentDocument);
@@ -127,7 +127,7 @@ function PureArtifact({
     (updatedContent: string) => {
       if (!artifact) return;
 
-      mutate<Array<Document>>(
+      mutate<Array<ArtifactDocument>>(
         `/api/document?id=${artifact.documentId}`,
         async (currentDocuments) => {
           if (!currentDocuments) return undefined;
@@ -190,7 +190,8 @@ function PureArtifact({
   function getDocumentContentById(index: number) {
     if (!documents) return '';
     if (!documents[index]) return '';
-    return documents[index].content ?? '';
+    const doc = documents[index] as ArtifactDocument;
+    return doc.content ?? '';
   }
 
   const handleVersionChange = (type: 'next' | 'prev' | 'toggle' | 'latest') => {

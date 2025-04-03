@@ -120,6 +120,13 @@ export const documents = pgTable('documents', {
 
 export type Document = InferSelectModel<typeof documents>;
 
+// Extended Document type for use with the artifact system
+export interface ArtifactDocument extends Document {
+  content?: string;
+  title?: string;
+  kind?: string;
+}
+
 export const suggestion = pgTable(
   'Suggestion',
   {
