@@ -29,16 +29,25 @@ export const updateDocument = ({ session, dataStream }: UpdateDocumentProps) =>
 
       dataStream.writeData({
         type: 'clear',
-        content: document.title,
+        content: document.fileName,
       });
+
+      // Determine document kind based on fileType
+      const documentKind = document.fileType.includes('image') 
+        ? 'image' 
+        : document.fileType.includes('sheet') || document.fileType.includes('csv') 
+          ? 'sheet' 
+          : document.fileType.includes('code') || document.fileName.endsWith('.js') || document.fileName.endsWith('.ts')
+            ? 'code'
+            : 'text';
 
       const documentHandler = documentHandlersByArtifactKind.find(
         (documentHandlerByArtifactKind) =>
-          documentHandlerByArtifactKind.kind === document.kind,
+          documentHandlerByArtifactKind.kind === documentKind,
       );
 
       if (!documentHandler) {
-        throw new Error(`No document handler found for kind: ${document.kind}`);
+        throw new Error(`No document handler found for kind: ${documentKind}`);
       }
 
       await documentHandler.onUpdateDocument({
@@ -52,8 +61,8 @@ export const updateDocument = ({ session, dataStream }: UpdateDocumentProps) =>
 
       return {
         id,
-        title: document.title,
-        kind: document.kind,
+        title: document.fileName,
+        kind: documentKind,
         content: 'The document has been updated successfully.',
       };
     },
