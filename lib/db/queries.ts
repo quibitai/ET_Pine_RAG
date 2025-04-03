@@ -192,7 +192,7 @@ export async function saveDocument({
   userId: string;
   fileName: string;
   fileType: string;
-  fileSize: number | string; // Accept both for backward compatibility
+  fileSize: number; // Explicitly require a number type
   blobUrl: string;
   processingStatus?: 'pending' | 'processing' | 'completed' | 'failed';
   statusMessage?: string;
@@ -203,21 +203,18 @@ export async function saveDocument({
   try {
     console.log('saveDocument called with:', { 
       id, userId, fileName, fileType,
-      fileSize: typeof fileSize === 'string' ? fileSize : fileSize.toString(),
+      fileSize: fileSize.toString(), // Convert to string for logging
       blobUrl: blobUrl?.substring(0, 30) + '...', // Truncate for logging
       processingStatus, statusMessage, totalChunks, processedChunks,
       contentLength: content ? content.length : 0,
     });
-    
-    // Convert fileSize to number if it's a string
-    const fileSizeNumber = typeof fileSize === 'string' ? parseInt(fileSize, 10) : fileSize;
     
     const [insertedDocument] = await db.insert(documents).values({
       id,
       userId,
       fileName,
       fileType,
-      fileSize: fileSizeNumber,
+      fileSize, // Use the number directly
       blobUrl,
       processingStatus: processingStatus ?? 'pending',
       statusMessage,
@@ -517,16 +514,22 @@ export async function getUserFiles({ userId }: { userId: string }) {
     const results = await db
       .select()
       .from(documents)
-      .where(
-        and(
-          eq(documents.userId, userId),
-          inArray(documents.kind, ['text', 'pdf', 'txt', 'docx'])
-        )
-      )
+      .where(eq(documents.userId, userId))
       .orderBy(desc(documents.createdAt));
     
-    console.log(`Retrieved ${results.length} files for user ${userId}`);
-    return results;
+    const supportedFiles = results.filter(doc => {
+      const type = doc.fileType?.toLowerCase() || '';
+      return type.includes('text') || 
+             type.includes('pdf') || 
+             type.includes('application/pdf') ||
+             type.includes('docx') ||
+             type.endsWith('.txt') ||
+             type.endsWith('.pdf') ||
+             type.endsWith('.docx');
+    });
+    
+    console.log(`Retrieved ${supportedFiles.length} files for user ${userId}`);
+    return supportedFiles;
   } catch (error) {
     console.error(`Failed to get files for user ${userId}.`);
     // Safe conversion for logging only

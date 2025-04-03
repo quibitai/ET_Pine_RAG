@@ -87,7 +87,9 @@ export function createDocumentHandler<T extends ArtifactKind>(config: {
           userId: args.session.user.id,
           fileName: args.document.fileName,
           fileType: args.document.fileType,
-          fileSize: args.document.fileSize?.toString(),
+          fileSize: typeof args.document.fileSize === 'string' 
+                    ? parseInt(args.document.fileSize, 10) 
+                    : args.document.fileSize || 0,
           blobUrl: args.document.blobUrl,
           processingStatus: 'completed',
           content: draftContent
