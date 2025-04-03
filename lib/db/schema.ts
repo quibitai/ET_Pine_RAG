@@ -105,8 +105,8 @@ export type Vote = InferSelectModel<typeof vote>;
 
 export const documents = pgTable('documents', {
   id: uuid('id').defaultRandom().primaryKey(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  createdAt: timestamp('createdAt').defaultNow().notNull(),
+  updatedAt: timestamp('updatedAt').defaultNow().notNull(),
   userId: text('user_id').notNull(),
   fileName: text('fileName').notNull(),
   fileType: text('fileType').notNull(),
