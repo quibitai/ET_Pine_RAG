@@ -191,9 +191,9 @@ export async function saveDocument({
   id: string;
   userId: string;
   fileName: string;
-  fileType: string;
-  fileSize: number; // Explicitly require a number type
-  blobUrl: string;
+  fileType?: string; // Make optional
+  fileSize: number; // Explicitly number type
+  blobUrl?: string; // Make optional
   processingStatus?: 'pending' | 'processing' | 'completed' | 'failed';
   statusMessage?: string;
   totalChunks?: number;
@@ -213,9 +213,9 @@ export async function saveDocument({
       id,
       userId,
       fileName,
-      fileType,
-      fileSize, // Use the number directly
-      blobUrl,
+      fileType: fileType ?? 'unknown',
+      fileSize: fileSize ?? 0, // Provide default
+      blobUrl: blobUrl ?? '', // Provide default
       processingStatus: processingStatus ?? 'pending',
       statusMessage,
       totalChunks,
