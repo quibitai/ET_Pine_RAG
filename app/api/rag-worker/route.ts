@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
-import { processFileForRag } from '@/lib/rag-processor';
+import { processFileForRag, generateEmbeddings } from '@/lib/rag-processor';
 import { Receiver } from "@upstash/qstash";
-import { getDocumentById } from '@/lib/db/queries';
-import { createClient } from '@upstash/qstash';
+import { getDocumentById, incrementProcessedChunks, updateFileRagStatus } from '@/lib/db/queries';
+import { Client as QStashClient } from '@upstash/qstash';
 import { getPineconeIndex } from '@/lib/pinecone-client';
-import { incrementProcessedChunks } from '@/lib/db/queries';
-import { updateFileRagStatus } from '@/lib/db/queries';
-import { generateEmbeddings } from '@/lib/rag-processor';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes
