@@ -50,6 +50,13 @@
       "when": 1743277524734,
       "tag": "0006_salty_ikaris",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1743688749500,
+      "tag": "0007_gray_giant_girl",
+      "breakpoints": true
     }
   ]
 }

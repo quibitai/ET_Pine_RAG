@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { processFileForRag } from '@/lib/rag-processor';
 import { Receiver } from "@upstash/qstash";
 import { getDocumentById } from '@/lib/db/queries';
+import { createClient } from '@upstash/qstash';
+import { getPineconeIndex } from '@/lib/pinecone-client';
+import { incrementProcessedChunks } from '@/lib/db/queries';
+import { updateFileRagStatus } from '@/lib/db/queries';
+import { generateEmbeddings } from '@/lib/rag-processor';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes
@@ -82,174 +87,181 @@ export async function PATCH(request: Request) {
   }
 }
 
-// Direct POST handler with manual QStash signature verification
-export async function POST(request: Request): Promise<NextResponse> {
-    const startTime = new Date();
-    console.log(`[RAG Worker] ============ HANDLER INVOKED ============`);
-    console.log(`[RAG Worker] Handler started at ${startTime.toISOString()}`);
-    console.log(`[RAG Worker] Environment: ${process.env.NODE_ENV || 'unknown'}, Vercel: ${process.env.VERCEL_ENV || 'not Vercel'}`);
+// Initialize QStash verification tools
+const signingKey = process.env.QSTASH_CURRENT_SIGNING_KEY || '';
+const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY || '';
+const receiver = new Receiver({
+  currentSigningKey: signingKey,
+  nextSigningKey
+});
 
-    try {
-        // STEP 1: Read the raw request body as text ONLY ONCE
-        let rawBody: string;
-        try {
-            console.log('[RAG Worker] Reading raw request body as text...');
-            rawBody = await request.text();
-            console.log(`[RAG Worker] Successfully read raw body (${rawBody.length} bytes)`);
-        } catch (readError) {
-            console.error('[RAG Worker] Failed to read request body:', readError);
-            return NextResponse.json(
-                { error: 'Failed to read request body', details: readError instanceof Error ? readError.message : String(readError) },
-                { status: 500 }
-            );
-        }
+// Helper function to verify QStash signature
+async function verifySignature(req: Request): Promise<boolean> {
+  try {
+    // Manual signature verification by creating a new Request
+    const signature = req.headers.get('upstash-signature') || '';
+    
+    // Create a clone of the request with the same body
+    const body = await req.text();
+    
+    // Use the raw verification method instead of verify(request)
+    const isValid = await receiver.verify({
+      signature,
+      body
+    });
+    
+    if (!isValid) {
+      return false;
+    }
+    
+    // Parse the body after verification
+    const jsonBody = JSON.parse(body);
+    
+    // Store the parsed body for later use
+    (req as any).parsedBody = jsonBody;
+    
+    return true;
+  } catch (error) {
+    console.error('[RAG Worker] Signature verification failed:', error);
+    return false;
+  }
+}
 
-        // STEP 2: Get QStash signature from headers
-        const signature = request.headers.get('upstash-signature');
-        if (!signature) {
-            console.error('[RAG Worker] Missing upstash-signature header');
-            return NextResponse.json({ error: 'Missing signature header' }, { status: 401 });
-        }
-        console.log('[RAG Worker] Found upstash-signature header');
+export async function POST(req: Request) {
+  console.log('[RAG Worker] Received request');
 
-        // STEP 3: Initialize Receiver with signing keys from environment variables
-        const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY;
-        const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
+  try {
+    // Verify the request signature
+    const signatureValid = await verifySignature(req);
+    if (!signatureValid) {
+      console.error('[RAG Worker] Invalid signature, rejecting request');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+    
+    // Body has been parsed during signature verification
+    const body = (req as any).parsedBody;
+    
+    // Check required fields
+    if (!body.documentId || !body.userId) {
+      console.error('[RAG Worker] Missing required fields', body);
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+    
+    // Idempotency check
+    const document = await getDocumentById({ id: body.documentId });
+    if (!document) {
+      console.error(`[RAG Worker] Document ${body.documentId} not found`);
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
+    
+    // Check if this is a chunk processing request or initial document processing
+    if (body.chunkIndex !== undefined && body.chunkText) {
+      // This is a chunk processing request
+      console.log(`[RAG Worker] Processing chunk ${body.chunkIndex + 1}/${body.totalChunks} for document ${body.documentId}`);
+      
+      // Skip if document is already completed
+      if (document.processingStatus === 'completed') {
+        console.log(`[RAG Worker] Document ${body.documentId} already marked as completed, skipping chunk processing`);
+        return NextResponse.json({ message: 'Document already processed' }, { status: 200 });
+      }
+      
+      try {
+        // Generate embedding for this chunk
+        console.log(`[RAG Worker] Generating embedding for chunk ${body.chunkIndex}`);
+        const embedding = await generateEmbeddings(body.chunkText);
         
-        if (!currentSigningKey || !nextSigningKey) {
-            console.error('[RAG Worker] Missing QStash signing keys in environment variables');
-            return NextResponse.json({ error: 'Server configuration error: Missing signing keys' }, { status: 500 });
-        }
-
-        const receiver = new Receiver({
-            currentSigningKey,
-            nextSigningKey,
-        });
-
-        // STEP 4: Verify signature with the raw body
-        let isValid = false;
-        try {
-            console.log('[RAG Worker] Verifying QStash signature...');
-            isValid = await receiver.verify({
-                signature,
-                body: rawBody,
-                // Using a 90s clock tolerance (1.5 minutes) to handle time differences
-                clockTolerance: 90
+        // Get Pinecone index
+        const index = await getPineconeIndex();
+        
+        // Create vector ID
+        const vectorId = `${body.documentId}_chunk_${body.chunkIndex}`;
+        
+        // Create metadata
+        const metadata = {
+          text: body.chunkText,
+          documentId: body.documentId,
+          userId: body.userId,
+          chunkIndex: body.chunkIndex,
+          totalChunks: body.totalChunks,
+          source: body.documentName,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Upsert vector to Pinecone
+        console.log(`[RAG Worker] Upserting vector to Pinecone with ID ${vectorId}`);
+        await index.upsert([{
+          id: vectorId,
+          values: embedding,
+          metadata
+        }]);
+        
+        // Increment processed chunks count
+        const updateResult = await incrementProcessedChunks({ id: body.documentId });
+        
+        if (updateResult) {
+          const processedChunks = updateResult.processedChunks as number;
+          const totalChunks = updateResult.totalChunks as number | null;
+          
+          console.log(`[RAG Worker] Progress: ${processedChunks}/${totalChunks} chunks processed`);
+          
+          // Check if processing is complete
+          if (totalChunks !== null && processedChunks >= totalChunks) {
+            // All chunks processed, update document status to completed
+            await updateFileRagStatus({
+              id: body.documentId,
+              processingStatus: 'completed',
+              statusMessage: 'All chunks processed and indexed successfully'
             });
-            console.log(`[RAG Worker] Signature verification result: ${isValid ? 'Valid' : 'Invalid'}`);
-        } catch (verifyError) {
-            console.error('[RAG Worker] Error verifying signature:', verifyError);
-            return NextResponse.json(
-                { error: 'Signature verification error', details: verifyError instanceof Error ? verifyError.message : String(verifyError) },
-                { status: 500 }
-            );
-        }
-
-        // STEP 5: If verification failed, return error
-        if (!isValid) {
-            console.error('[RAG Worker] Invalid signature');
-            return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-        }
-
-        // STEP 6: Parse the saved raw body text into JSON
-        let body;
-        try {
-            console.log('[RAG Worker] Parsing verified raw body as JSON...');
-            body = JSON.parse(rawBody);
-            console.log('[RAG Worker] Successfully parsed body:', body);
-        } catch (parseError) {
-            console.error('[RAG Worker] Failed to parse raw body as JSON:', parseError);
-            return NextResponse.json(
-                { error: 'Invalid JSON in request body', details: parseError instanceof Error ? parseError.message : String(parseError) },
-                { status: 400 }
-            );
-        }
-
-        // STEP 7: Extract and validate required fields
-        const { documentId, userId } = body;
-        
-        if (!documentId) {
-            console.error('[RAG Worker] Missing documentId in payload');
-            return NextResponse.json({ error: 'Missing required field: documentId' }, { status: 400 });
+            
+            console.log(`[RAG Worker] Document ${body.documentId} processing completed`);
+          }
         }
         
-        if (!userId) {
-            console.error('[RAG Worker] Missing userId in payload');
-            return NextResponse.json({ error: 'Missing required field: userId' }, { status: 400 });
-        }
-
-        // STEP 8: Idempotency check - Verify document exists and check processing status
-        try {
-            console.log(`[RAG Worker] Checking document ${documentId} in database (idempotency check)...`);
-            const document = await getDocumentById({ id: documentId });
-            
-            if (!document) {
-                console.error(`[RAG Worker] Document ${documentId} not found in database`);
-                return NextResponse.json({ error: `Document ${documentId} not found` }, { status: 404 });
-            }
-            
-            console.log(`[RAG Worker] Document check successful: ${document.fileName} (${document.fileType}), Status: ${document.processingStatus}`);
-            
-            // If document is not in 'pending' state, assume this is a retry/duplicate request
-            if (document.processingStatus && document.processingStatus !== 'pending') {
-                console.log(`[RAG Worker] IDEMPOTENCY CHECK: Document ${documentId} is already in '${document.processingStatus}' state.`);
-                return NextResponse.json({
-                    message: `Document already in '${document.processingStatus}' state. Request ignored for idempotency.`,
-                    status: document.processingStatus,
-                    documentId
-                }, { status: 200 });
-            }
-        } catch (dbError) {
-            // Log error but continue processing - we'll attempt processing even if the check fails
-            console.error(`[RAG Worker] Database error during idempotency check:`, dbError);
-        }
-
-        // STEP 9: Process the file
-        console.log(`[RAG Worker] Starting RAG processing for document ${documentId} (user: ${userId})...`);
-        console.time(`rag_processing_${documentId}`);
+        // Return success
+        return NextResponse.json({
+          message: `Chunk ${body.chunkIndex + 1}/${body.totalChunks} processed successfully`,
+          progress: updateResult ? {
+            processed: updateResult.processedChunks,
+            total: updateResult.totalChunks
+          } : undefined
+        }, { status: 200 });
+      } catch (error) {
+        console.error(`[RAG Worker] Error processing chunk ${body.chunkIndex}:`, error);
         
-        try {
-            const success = await processFileForRag({ documentId, userId });
-            console.timeEnd(`rag_processing_${documentId}`);
-            
-            if (success) {
-                const processingTime = new Date().getTime() - startTime.getTime();
-                console.log(`[RAG Worker] Successfully processed document ${documentId} in ${processingTime}ms`);
-                return NextResponse.json({
-                    message: 'Processing completed successfully',
-                    processingTimeMs: processingTime,
-                    documentId
-                }, { status: 200 });
-            } else {
-                console.error(`[RAG Worker] Processing returned false for document ${documentId}`);
-                return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
-            }
-        } catch (processingError) {
-            console.timeEnd(`rag_processing_${documentId}`);
-            console.error(`[RAG Worker] Error during document processing:`, processingError);
-            return NextResponse.json({
-                error: 'Processing error',
-                details: processingError instanceof Error ? processingError.message : String(processingError)
-            }, { status: 500 });
-        }
-
-    } catch (error) {
-        console.error('[RAG Worker] Unhandled error in handler:', error);
-        if (error instanceof Error) {
-            console.error('[RAG Worker] Error name:', error.name);
-            console.error('[RAG Worker] Error message:', error.message);
-            console.error('[RAG Worker] Error stack:', error.stack);
-        }
+        // We don't mark the document as failed for individual chunk failures
+        // The document will still have partial results and the UI can show the incomplete status
         
         return NextResponse.json({
-            error: 'Internal server error',
-            details: error instanceof Error ? error.message : String(error)
+          error: `Failed to process chunk ${body.chunkIndex}: ${error instanceof Error ? error.message : 'Unknown error'}`
         }, { status: 500 });
-    } finally {
-        const endTime = new Date();
-        const duration = endTime.getTime() - startTime.getTime();
-        console.log(`[RAG Worker] Handler completed at ${endTime.toISOString()}`);
-        console.log(`[RAG Worker] Total handler duration: ${duration}ms`);
-        console.log(`[RAG Worker] ============ HANDLER COMPLETED ============`);
+      }
+    } else {
+      // This is an initial document processing request
+      
+      // Check if document is already being processed
+      if (['processing', 'completed'].includes(document.processingStatus)) {
+        console.log(`[RAG Worker] Document ${body.documentId} is already in ${document.processingStatus} state, skipping`);
+        return NextResponse.json({ message: `Document processing already ${document.processingStatus}` }, { status: 200 });
+      }
+      
+      // Start document processing
+      console.log(`[RAG Worker] Starting initial processing for document ${body.documentId}`);
+      
+      try {
+        const result = await processFileForRag({ documentId: body.documentId, userId: body.userId });
+        return NextResponse.json({
+          message: 'Document processing initiated, chunk jobs queued',
+          result
+        }, { status: 200 });
+      } catch (error) {
+        console.error(`[RAG Worker] Error initiating document processing:`, error);
+        return NextResponse.json({
+          error: `Failed to initiate document processing: ${error instanceof Error ? error.message : 'Unknown error'}`
+        }, { status: 500 });
+      }
     }
+  } catch (error) {
+    console.error('[RAG Worker] Unhandled error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 } 

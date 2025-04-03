@@ -3,9 +3,10 @@
 import 'server-only';
 
 import { genSaltSync, hashSync } from 'bcrypt-ts';
-import { and, asc, desc, eq, gt, gte, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import { v4 as uuidv4 } from 'uuid';
 
 import {
   user,
@@ -17,8 +18,11 @@ import {
   message,
   vote,
   type DBMessage,
+  documents,
+  Document,
 } from './schema';
 import { ArtifactKind } from '@/components/artifact';
+import { db } from '@/lib/db';
 
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
@@ -247,16 +251,15 @@ export async function getDocumentsById({ id }: { id: string }) {
 
 export async function getDocumentById({ id }: { id: string }) {
   try {
-    const [selectedDocument] = await db
+    const [document] = await db
       .select()
-      .from(document)
-      .where(eq(document.id, id))
-      .orderBy(desc(document.createdAt));
-
-    return selectedDocument;
+      .from(documents)
+      .where(eq(documents.id, id));
+    
+    return document;
   } catch (error) {
-    console.error('Failed to get document by id from database');
-    throw error;
+    console.error('Error getting document by id:', error);
+    return null;
   }
 }
 
@@ -462,34 +465,37 @@ export async function updateFileRagStatus({
   id,
   processingStatus,
   statusMessage,
+  totalChunks,
 }: {
   id: string;
   processingStatus: 'pending' | 'processing' | 'completed' | 'failed';
   statusMessage?: string;
+  totalChunks?: number;
 }) {
   try {
     console.log(`updateFileRagStatus: Updating document ${id} to status ${processingStatus}${statusMessage ? ' with message' : ''}`);
     
-    // Create update object with optional status message
-    const updateData: { 
-      processingStatus: 'pending' | 'processing' | 'completed' | 'failed'; 
-      statusMessage?: string 
-    } = { 
-      processingStatus 
+    const values: any = {
+      processingStatus,
+      updatedAt: new Date(),
     };
     
-    // Only add statusMessage to update if it's provided
     if (statusMessage) {
-      updateData.statusMessage = statusMessage;
+      values.statusMessage = statusMessage;
+    }
+
+    if (totalChunks !== undefined) {
+      values.totalChunks = totalChunks;
     }
     
-    const result = await db
-      .update(document)
-      .set(updateData)
-      .where(eq(document.id, id));
+    const [updatedDocument] = await db
+      .update(documents)
+      .set(values)
+      .where(eq(documents.id, id))
+      .returning();
     
     console.log(`RAG status update completed for document ${id}`);
-    return result;
+    return updatedDocument;
   } catch (error) {
     console.error(`Failed to update RAG status for document ${id}.`);
     // Safe conversion for logging only
@@ -523,5 +529,83 @@ export async function getUserFiles({ userId }: { userId: string }) {
     if (err.message) console.error('Error message:', err.message);
     if (err.stack) console.error('Error stack:', err.stack);
     throw error;
+  }
+}
+
+export async function createDocument({ 
+  userId, 
+  fileName, 
+  fileType,
+  fileSize,
+  blobUrl
+}: { 
+  userId: string; 
+  fileName: string; 
+  fileType: string;
+  fileSize: number;
+  blobUrl: string;
+}) {
+  try {
+    const documentId = uuidv4();
+    const [document] = await db
+      .insert(documents)
+      .values({
+        id: documentId,
+        userId,
+        fileName,
+        fileType,
+        fileSize,
+        blobUrl,
+        processingStatus: 'pending',
+      })
+      .returning();
+    
+    return document;
+  } catch (error) {
+    console.error('Error creating document:', error);
+    return null;
+  }
+}
+
+export async function incrementProcessedChunks({ id }: { id: string }) {
+  try {
+    // Use SQL raw query to atomically increment the processedChunks count
+    const [updatedDocument] = await db.execute(sql`
+      UPDATE documents
+      SET processed_chunks = processed_chunks + 1,
+          updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *;
+    `);
+    
+    // Return the updated document with the new counts
+    return {
+      id: updatedDocument.id,
+      processedChunks: updatedDocument.processed_chunks,
+      totalChunks: updatedDocument.total_chunks
+    };
+  } catch (error) {
+    console.error('Error incrementing processed chunks:', error);
+    return null;
+  }
+}
+
+export async function getDocumentProgress({ id }: { id: string }) {
+  try {
+    const [document] = await db
+      .select({
+        id: documents.id,
+        processingStatus: documents.processingStatus,
+        totalChunks: documents.totalChunks,
+        processedChunks: documents.processedChunks,
+        statusMessage: documents.statusMessage
+      })
+      .from(documents)
+      .where(eq(documents.id, id));
+    
+    return document;
+  } catch (error) {
+    console.error('Error getting document progress:', error);
+    return null;
   }
 }

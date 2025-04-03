@@ -4,6 +4,10 @@ import { updateFileRagStatus, getDocumentById } from './db/queries';
 import { randomUUID } from 'crypto';
 import type { PineconeRecord, RecordMetadata } from '@pinecone-database/pinecone';
 import { DocumentProcessorServiceClient } from '@google-cloud/documentai';
+import { createClient } from '@google-cloud/documentai';
+import { del, get } from '@vercel/blob';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import QStashClient from '@upstash/qstash';
 
 /**
  * Splits text into chunks of specified size with overlap
@@ -435,5 +439,248 @@ export async function processFileForRag({
     }
     
     return false;
+  }
+}
+
+// Environment variables
+const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || '';
+const LOCATION = process.env.DOCUMENT_AI_LOCATION || 'us'; // e.g., 'us'
+const PROCESSOR_ID = process.env.DOCUMENT_AI_PROCESSOR_ID || '';
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
+const QSTASH_TOKEN = process.env.QSTASH_TOKEN || '';
+const WORKER_URL = process.env.QSTASH_WORKER_URL || 'https://example.vercel.app/api/rag-worker';
+
+// Initialize the Document AI client
+const documentClient = new createClient({
+  projectId: PROJECT_ID,
+  location: LOCATION,
+});
+
+// Initialize the Google Generative AI client
+const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
+
+// Initialize QStash client
+const qstashClient = new QStashClient({
+  token: QSTASH_TOKEN
+});
+
+/**
+ * Extracts text from a document using Google Document AI.
+ * @param {Uint8Array} fileBytes - The binary content of the file.
+ * @returns {Promise<string>} The extracted text.
+ */
+export async function extractTextWithGoogleDocumentAI(fileBytes: Uint8Array): Promise<string> {
+  try {
+    console.log('[RAG Processor] Starting Google Document AI text extraction');
+    const processorName = `projects/${PROJECT_ID}/locations/${LOCATION}/processors/${PROCESSOR_ID}`;
+    
+    // Process the document
+    const [result] = await documentClient.processDocument({
+      name: processorName,
+      rawDocument: {
+        content: fileBytes,
+        mimeType: 'application/pdf', // This is a hint, Document AI will detect the correct type
+      },
+    });
+    
+    const document = result.document;
+    if (!document || !document.text) {
+      throw new Error('No text extracted from document');
+    }
+    
+    console.log(`[RAG Processor] Text extraction successful, extracted ${document.text.length} characters`);
+    return document.text;
+  } catch (error) {
+    console.error('[RAG Processor] Error extracting text with Google Document AI:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generates embeddings for text using Google's embedding model.
+ * @param {string} text - The text to embed.
+ * @returns {Promise<number[]>} The embedding vector.
+ */
+export async function generateEmbeddings(text: string): Promise<number[]> {
+  try {
+    console.log(`[RAG Processor] Generating embeddings for text (length: ${text.length})`);
+    
+    const embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
+    const result = await embeddingModel.embedContent(text);
+    const embedding = result.embedding.values;
+    
+    console.log(`[RAG Processor] Successfully generated embedding vector of length ${embedding.length}`);
+    return embedding;
+  } catch (error) {
+    console.error('[RAG Processor] Error generating embeddings:', error);
+    throw error;
+  }
+}
+
+/**
+ * Splits a text into chunks of roughly equal size with some overlap.
+ * @param {string} text - The text to split.
+ * @param {number} chunkSize - The target size of each chunk.
+ * @param {number} overlap - The number of characters to overlap between chunks.
+ * @returns {string[]} An array of text chunks.
+ */
+export function chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
+  console.log(`[RAG Processor] Chunking text (length: ${text.length}) into chunks of size ${chunkSize} with ${overlap} overlap`);
+  
+  if (!text || text.trim() === '') {
+    console.warn('[RAG Processor] Empty text provided for chunking');
+    return [];
+  }
+  
+  const chunks: string[] = [];
+  let startIndex = 0;
+  
+  while (startIndex < text.length) {
+    let endIndex = startIndex + chunkSize;
+    
+    // If this isn't the end of the text, try to find a natural break point
+    if (endIndex < text.length) {
+      // Look for natural break points in the last part of the chunk
+      const searchArea = text.substring(endIndex - Math.min(200, chunkSize/4), endIndex);
+      const periods = [...searchArea.matchAll(/\./g)];
+      const paragraphs = [...searchArea.matchAll(/\n\s*\n/g)];
+      
+      // Prioritize paragraph breaks, then periods
+      if (paragraphs.length > 0) {
+        const lastParagraph = paragraphs[paragraphs.length - 1];
+        endIndex = endIndex - (searchArea.length - lastParagraph.index);
+      } else if (periods.length > 0) {
+        const lastPeriod = periods[periods.length - 1];
+        endIndex = endIndex - (searchArea.length - lastPeriod.index) + 1; // +1 to include the period
+      }
+    }
+    
+    // Extract the chunk and add it to our list
+    const chunk = text.substring(startIndex, endIndex).trim();
+    if (chunk) {
+      chunks.push(chunk);
+    }
+    
+    // Move to the next chunk, accounting for overlap
+    startIndex = endIndex - overlap;
+    
+    // Safety check to prevent infinite loops
+    if (startIndex >= text.length || startIndex === 0) {
+      break;
+    }
+  }
+  
+  console.log(`[RAG Processor] Created ${chunks.length} chunks from text`);
+  return chunks;
+}
+
+/**
+ * Processes a document file for RAG (Retrieval Augmented Generation).
+ * This function downloads the file, extracts text, chunks it, and queues individual chunk processing jobs.
+ * @param param0 Object containing documentId and userId
+ * @returns Promise with processing result
+ */
+export async function processFileForRag({ documentId, userId }: { documentId: string; userId: string }) {
+  console.log(`[RAG Processor] Starting RAG processing for document ${documentId} for user ${userId}`);
+  
+  try {
+    // Get document details from database
+    const docDetails = await getDocumentById({ id: documentId });
+    if (!docDetails) {
+      throw new Error(`Document ${documentId} not found in database`);
+    }
+    
+    // Update document status to processing
+    await updateFileRagStatus({ 
+      id: documentId, 
+      processingStatus: 'processing', 
+      statusMessage: 'Document download in progress' 
+    });
+    
+    // Download the document from Vercel Blob
+    console.log(`[RAG Processor] Downloading document from ${docDetails.blobUrl}`);
+    const documentResponse = await fetch(docDetails.blobUrl);
+    if (!documentResponse.ok) {
+      throw new Error(`Failed to download document from Blob storage: ${documentResponse.statusText}`);
+    }
+    
+    // Convert to Uint8Array for Document AI
+    const fileBuffer = await documentResponse.arrayBuffer();
+    const fileBytes = new Uint8Array(fileBuffer);
+    
+    // Update status - starting text extraction
+    await updateFileRagStatus({ 
+      id: documentId, 
+      processingStatus: 'processing', 
+      statusMessage: 'Extracting text from document' 
+    });
+    
+    // Extract text using Google Document AI
+    const extractedText = await extractTextWithGoogleDocumentAI(fileBytes);
+    if (!extractedText || extractedText.trim() === '') {
+      throw new Error('No text could be extracted from the document');
+    }
+    
+    // Chunk the text
+    const textChunks = chunkText(extractedText);
+    if (textChunks.length === 0) {
+      throw new Error('Failed to create chunks from extracted text');
+    }
+    
+    // Update status with total chunks
+    const totalChunks = textChunks.length;
+    await updateFileRagStatus({ 
+      id: documentId, 
+      processingStatus: 'processing', 
+      statusMessage: `Text extracted and chunked into ${totalChunks} segments. Queueing embedding jobs.`,
+      totalChunks
+    });
+    
+    // Queue chunk processing jobs
+    console.log(`[RAG Processor] Queueing ${totalChunks} embedding jobs for document ${documentId}`);
+    
+    await Promise.all(textChunks.map(async (chunkText, chunkIndex) => {
+      try {
+        console.log(`[RAG Processor] Enqueuing job for chunk ${chunkIndex+1}/${totalChunks} of document ${documentId}`);
+        
+        // Create the payload for this chunk
+        const payload = {
+          documentId,
+          userId,
+          chunkIndex,
+          chunkText,
+          totalChunks,
+          documentName: docDetails.fileName
+        };
+        
+        // Send to QStash
+        await qstashClient.publishJSON({
+          url: WORKER_URL,
+          body: payload,
+          retries: 3
+        });
+      } catch (error) {
+        console.error(`[RAG Processor] Error queueing job for chunk ${chunkIndex}:`, error);
+        // We continue processing other chunks even if one fails
+      }
+    }));
+    
+    console.log(`[RAG Processor] Successfully queued ${totalChunks} embedding jobs for document ${documentId}`);
+    
+    return {
+      success: true,
+      message: `Document processed and ${totalChunks} embedding jobs queued`
+    };
+  } catch (error) {
+    console.error(`[RAG Processor] Error processing document ${documentId}:`, error);
+    
+    // Update document status to failed
+    await updateFileRagStatus({ 
+      id: documentId, 
+      processingStatus: 'failed', 
+      statusMessage: `Processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+    });
+    
+    throw error;
   }
 } 

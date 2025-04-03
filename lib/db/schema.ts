@@ -9,6 +9,7 @@ import {
   primaryKey,
   foreignKey,
   boolean,
+  integer,
 } from 'drizzle-orm/pg-core';
 
 export const user = pgTable('User', {
@@ -102,33 +103,22 @@ export const vote = pgTable(
 
 export type Vote = InferSelectModel<typeof vote>;
 
-export const document = pgTable(
-  'Document',
-  {
-    id: uuid('id').notNull().defaultRandom(),
-    createdAt: timestamp('createdAt').notNull(),
-    title: text('title').notNull(),
-    content: text('content'),
-    kind: varchar('text', { enum: ['text', 'code', 'image', 'sheet', 'pdf', 'txt', 'docx'] })
-      .notNull()
-      .default('text'),
-    userId: uuid('userId')
-      .notNull()
-      .references(() => user.id),
-    fileUrl: text('fileUrl'),
-    fileName: text('fileName'),
-    fileSize: varchar('fileSize', { length: 20 }),
-    fileType: varchar('fileType', { length: 100 }),
-    processingStatus: varchar('processingStatus', { enum: ['pending', 'processing', 'completed', 'failed'] }),
-  },
-  (table) => {
-    return {
-      pk: primaryKey({ columns: [table.id, table.createdAt] }),
-    };
-  },
-);
+export const documents = pgTable('documents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  userId: text('user_id').notNull(),
+  fileName: text('file_name').notNull(),
+  fileType: text('file_type').notNull(),
+  fileSize: integer('file_size').notNull(),
+  blobUrl: text('blob_url').notNull(),
+  processingStatus: text('processing_status').notNull().default('pending'),
+  statusMessage: text('status_message'),
+  totalChunks: integer('total_chunks'),
+  processedChunks: integer('processed_chunks').notNull().default(0),
+});
 
-export type Document = InferSelectModel<typeof document>;
+export type Document = InferSelectModel<typeof documents>;
 
 export const suggestion = pgTable(
   'Suggestion',
@@ -149,7 +139,7 @@ export const suggestion = pgTable(
     pk: primaryKey({ columns: [table.id] }),
     documentRef: foreignKey({
       columns: [table.documentId, table.documentCreatedAt],
-      foreignColumns: [document.id, document.createdAt],
+      foreignColumns: [documents.id, documents.createdAt],
     }),
   }),
 );
