@@ -91,6 +91,50 @@ const runPush = async () => {
           ALTER TABLE "documents" RENAME COLUMN "blob_url" TO "fileUrl";
         END IF;
 
+        -- Check if fileUrl exists and blobUrl doesn't
+        IF EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'fileUrl'
+        ) AND NOT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'blobUrl'
+        ) THEN
+          ALTER TABLE "documents" RENAME COLUMN "fileUrl" TO "blobUrl";
+        END IF;
+
+        -- Check if status_message exists and statusMessage doesn't
+        IF EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'status_message'
+        ) AND NOT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'statusMessage'
+        ) THEN
+          ALTER TABLE "documents" RENAME COLUMN "status_message" TO "statusMessage";
+        END IF;
+
+        -- Check if total_chunks exists and totalChunks doesn't
+        IF EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'total_chunks'
+        ) AND NOT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'totalChunks'
+        ) THEN
+          ALTER TABLE "documents" RENAME COLUMN "total_chunks" TO "totalChunks";
+        END IF;
+
+        -- Check if processed_chunks exists and processedChunks doesn't
+        IF EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'processed_chunks'
+        ) AND NOT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'processedChunks'
+        ) THEN
+          ALTER TABLE "documents" RENAME COLUMN "processed_chunks" TO "processedChunks";
+        END IF;
+
         -- Check if processing_status exists and processingStatus doesn't
         IF EXISTS (
           SELECT FROM information_schema.columns 

@@ -111,11 +111,11 @@ export const documents = pgTable('documents', {
   fileName: text('fileName').notNull(),
   fileType: text('fileType').notNull(),
   fileSize: integer('fileSize').notNull(),
-  blobUrl: text('fileUrl').notNull(),
+  blobUrl: text('blobUrl').notNull(),
   processingStatus: text('processingStatus').notNull().default('pending'),
-  statusMessage: text('status_message'),
-  totalChunks: integer('total_chunks'),
-  processedChunks: integer('processed_chunks').notNull().default(0),
+  statusMessage: text('statusMessage'),
+  totalChunks: integer('totalChunks'),
+  processedChunks: integer('processedChunks').notNull().default(0),
   title: text('title').notNull(),
 });
 
