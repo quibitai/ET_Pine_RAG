@@ -187,6 +187,104 @@ const runPush = async () => {
           FOR EACH ROW
           EXECUTE FUNCTION set_title_from_filename();
         END IF;
+
+        -- Data synchronization between columns
+        -- Copy user_id to userId and vice versa if either is NULL
+        IF EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'user_id'
+        ) AND EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'userId'
+        ) THEN
+          -- Update rows where userId is NULL but user_id has a value
+          UPDATE "documents" SET "userId" = "user_id" WHERE "userId" IS NULL AND "user_id" IS NOT NULL;
+          -- Update rows where user_id is NULL but userId has a value
+          UPDATE "documents" SET "user_id" = "userId" WHERE "user_id" IS NULL AND "userId" IS NOT NULL;
+        END IF;
+
+        -- Copy fileUrl to blobUrl and vice versa if either is NULL
+        IF EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'fileUrl'
+        ) AND EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'blobUrl'
+        ) THEN
+          -- Update rows where blobUrl is NULL but fileUrl has a value
+          UPDATE "documents" SET "blobUrl" = "fileUrl" WHERE "blobUrl" IS NULL AND "fileUrl" IS NOT NULL;
+          -- Update rows where fileUrl is NULL but blobUrl has a value
+          UPDATE "documents" SET "fileUrl" = "blobUrl" WHERE "fileUrl" IS NULL AND "blobUrl" IS NOT NULL;
+        END IF;
+
+        -- Copy status_message to statusMessage and vice versa if either is NULL
+        IF EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'status_message'
+        ) AND EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'statusMessage'
+        ) THEN
+          -- Update rows where statusMessage is NULL but status_message has a value
+          UPDATE "documents" SET "statusMessage" = "status_message" WHERE "statusMessage" IS NULL AND "status_message" IS NOT NULL;
+          -- Update rows where status_message is NULL but statusMessage has a value
+          UPDATE "documents" SET "status_message" = "statusMessage" WHERE "status_message" IS NULL AND "statusMessage" IS NOT NULL;
+        END IF;
+
+        -- Copy total_chunks to totalChunks and vice versa if either is NULL
+        IF EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'total_chunks'
+        ) AND EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'totalChunks'
+        ) THEN
+          -- Update rows where totalChunks is NULL but total_chunks has a value
+          UPDATE "documents" SET "totalChunks" = "total_chunks" WHERE "totalChunks" IS NULL AND "total_chunks" IS NOT NULL;
+          -- Update rows where total_chunks is NULL but totalChunks has a value
+          UPDATE "documents" SET "total_chunks" = "totalChunks" WHERE "total_chunks" IS NULL AND "totalChunks" IS NOT NULL;
+        END IF;
+
+        -- Copy processed_chunks to processedChunks and vice versa if either is NULL
+        IF EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'processed_chunks'
+        ) AND EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'processedChunks'
+        ) THEN
+          -- Update rows where processedChunks is NULL but processed_chunks has a value
+          UPDATE "documents" SET "processedChunks" = "processed_chunks" WHERE "processedChunks" IS NULL AND "processed_chunks" IS NOT NULL;
+          -- Update rows where processed_chunks is NULL but processedChunks has a value
+          UPDATE "documents" SET "processed_chunks" = "processedChunks" WHERE "processed_chunks" IS NULL AND "processedChunks" IS NOT NULL;
+        END IF;
+
+        -- Create missing columns with defaults from corresponding columns if they exist
+        -- If userId doesn't exist but user_id does
+        IF NOT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'userId'
+        ) AND EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'user_id'
+        ) THEN
+          ALTER TABLE "documents" ADD COLUMN "userId" TEXT;
+          UPDATE "documents" SET "userId" = "user_id";
+          ALTER TABLE "documents" ALTER COLUMN "userId" SET NOT NULL;
+        END IF;
+
+        -- If blobUrl doesn't exist but fileUrl does
+        IF NOT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'blobUrl'
+        ) AND EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'documents' AND column_name = 'fileUrl'
+        ) THEN
+          ALTER TABLE "documents" ADD COLUMN "blobUrl" TEXT;
+          UPDATE "documents" SET "blobUrl" = "fileUrl";
+          ALTER TABLE "documents" ALTER COLUMN "blobUrl" SET NOT NULL;
+        END IF;
       END
       $$;
     `);
