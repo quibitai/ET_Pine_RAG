@@ -66,8 +66,7 @@ export async function POST(request: Request) {
                 kind === 'sheet' ? 'text/csv' : 'text/plain',
       fileSize: content ? Buffer.from(content).length : 0,
       blobUrl: '',
-      processingStatus: 'completed',
-      content
+      processingStatus: 'completed'
     });
 
     return Response.json(document, { status: 200 });
