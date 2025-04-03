@@ -211,7 +211,7 @@ export async function saveDocument({
       userId,
       fileName,
       fileType: fileType ?? 'unknown',
-      fileSize: Number(fileSize ?? 0), // Force conversion to number
+      fileSize: fileSize.toString(), // Convert to string for varchar column
       blobUrl: blobUrl ?? '', // Provide default
       processingStatus: processingStatus ?? 'pending',
       statusMessage,
