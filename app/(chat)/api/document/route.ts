@@ -59,10 +59,15 @@ export async function POST(request: Request) {
   if (session.user?.id) {
     const document = await saveDocument({
       id,
-      content,
-      title,
-      kind,
       userId: session.user.id,
+      fileName: title,
+      fileType: kind === 'code' ? 'text/plain+code' : 
+                kind === 'image' ? 'image/png' : 
+                kind === 'sheet' ? 'text/csv' : 'text/plain',
+      fileSize: content ? Buffer.from(content).length : 0,
+      blobUrl: '',
+      processingStatus: 'completed',
+      content
     });
 
     return Response.json(document, { status: 200 });
