@@ -177,51 +177,58 @@ export async function getVotesByChatId({ id }: { id: string }) {
 
 export async function saveDocument({
   id,
-  title,
-  kind,
-  content,
   userId,
-  fileUrl,
   fileName,
-  fileSize,
   fileType,
+  fileSize,
+  blobUrl,
   processingStatus,
+  statusMessage,
+  totalChunks,
+  processedChunks,
+  content, // Keep for backward compatibility with ArtifactDocument
 }: {
   id: string;
-  title: string;
-  kind: ArtifactKind;
-  content?: string;
   userId: string;
-  fileUrl?: string;
-  fileName?: string;
-  fileSize?: string;
-  fileType?: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number | string; // Accept both for backward compatibility
+  blobUrl: string;
   processingStatus?: 'pending' | 'processing' | 'completed' | 'failed';
+  statusMessage?: string;
+  totalChunks?: number;
+  processedChunks?: number;
+  content?: string; // Not stored in DB, but kept for compatibility
 }) {
   try {
     console.log('saveDocument called with:', { 
-      id, title, kind, userId, 
+      id, userId, fileName, fileType,
+      fileSize: typeof fileSize === 'string' ? fileSize : fileSize.toString(),
+      blobUrl: blobUrl?.substring(0, 30) + '...', // Truncate for logging
+      processingStatus, statusMessage, totalChunks, processedChunks,
       contentLength: content ? content.length : 0,
-      fileUrl: fileUrl?.substring(0, 30) + '...', // Truncate for logging
-      fileName, fileSize, fileType, processingStatus
     });
     
-    const result = await db.insert(document).values({
+    // Convert fileSize to number if it's a string
+    const fileSizeNumber = typeof fileSize === 'string' ? parseInt(fileSize, 10) : fileSize;
+    
+    const [insertedDocument] = await db.insert(documents).values({
       id,
-      title,
-      kind,
-      content,
       userId,
-      fileUrl,
       fileName,
-      fileSize,
       fileType,
-      processingStatus,
+      fileSize: fileSizeNumber,
+      blobUrl,
+      processingStatus: processingStatus ?? 'pending',
+      statusMessage,
+      totalChunks,
+      processedChunks: processedChunks ?? 0,
       createdAt: new Date(),
-    });
+      updatedAt: new Date(),
+    }).returning();
     
     console.log('Document successfully saved to database. ID:', id);
-    return result;
+    return insertedDocument;
   } catch (error) {
     console.error('Failed to save document in database.');
     // Safe conversion for logging only
@@ -234,13 +241,13 @@ export async function saveDocument({
 
 export async function getDocumentsById({ id }: { id: string }) {
   try {
-    const documents = await db
+    const documentsResult = await db
       .select()
-      .from(document)
-      .where(eq(document.id, id))
-      .orderBy(asc(document.createdAt));
+      .from(documents)
+      .where(eq(documents.id, id))
+      .orderBy(asc(documents.createdAt));
 
-    return documents;
+    return documentsResult;
   } catch (error) {
     console.error('Failed to get document by id from database');
     throw error;
@@ -279,8 +286,8 @@ export async function deleteDocumentsByIdAfterTimestamp({
       );
 
     return await db
-      .delete(document)
-      .where(and(eq(document.id, id), gt(document.createdAt, timestamp)));
+      .delete(documents)
+      .where(and(eq(documents.id, id), gt(documents.createdAt, timestamp)));
   } catch (error) {
     console.error(
       'Failed to delete documents by id after timestamp from database',
@@ -386,9 +393,9 @@ export async function getDocumentsByUserId({ userId }: { userId: string }) {
   try {
     return await db
       .select()
-      .from(document)
-      .where(eq(document.userId, userId))
-      .orderBy(desc(document.createdAt));
+      .from(documents)
+      .where(eq(documents.userId, userId))
+      .orderBy(desc(documents.createdAt));
   } catch (error) {
     console.error('Failed to get documents by user id from database');
     throw error;
@@ -404,9 +411,9 @@ export async function updateDocumentProcessingStatus({
 }) {
   try {
     return await db
-      .update(document)
+      .update(documents)
       .set({ processingStatus })
-      .where(eq(document.id, id));
+      .where(eq(documents.id, id));
   } catch (error) {
     console.error('Failed to update document processing status in database');
     throw error;
@@ -434,7 +441,7 @@ export async function addUploadedFileMetadata({
       fileUrl: fileUrl?.substring(0, 30) + '...' // Log truncated URL for privacy/brevity
     });
     
-    const result = await db.insert(document).values({
+    const result = await db.insert(documents).values({
       id,
       userId,
       fileName,
@@ -509,14 +516,14 @@ export async function getUserFiles({ userId }: { userId: string }) {
     console.log(`Getting files for user ${userId}`);
     const results = await db
       .select()
-      .from(document)
+      .from(documents)
       .where(
         and(
-          eq(document.userId, userId),
-          inArray(document.kind, ['text', 'pdf', 'txt', 'docx'])
+          eq(documents.userId, userId),
+          inArray(documents.kind, ['text', 'pdf', 'txt', 'docx'])
         )
       )
-      .orderBy(desc(document.createdAt));
+      .orderBy(desc(documents.createdAt));
     
     console.log(`Retrieved ${results.length} files for user ${userId}`);
     return results;
@@ -605,5 +612,66 @@ export async function getDocumentProgress({ id }: { id: string }) {
   } catch (error) {
     console.error('Error getting document progress:', error);
     return null;
+  }
+}
+
+export async function getUserDocuments({
+  userId,
+}: {
+  userId: string;
+}): Promise<Document[]> {
+  try {
+    console.log(`Retrieving files for user ${userId}`);
+    
+    const results = await db
+      .select()
+      .from(documents)
+      .where(eq(documents.userId, userId))
+      .orderBy(desc(documents.createdAt));
+    
+    console.log(`Retrieved ${results.length} files for user ${userId}`);
+    return results;
+  } catch (error) {
+    console.error('Failed to get documents by user id from database', error);
+    throw error;
+  }
+}
+
+export async function saveQueuedDocument({
+  id,
+  userId,
+  fileName,
+  fileType,
+  fileSize,
+  blobUrl,
+}: {
+  id: string;
+  userId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  blobUrl: string;
+}) {
+  try {
+    console.log(`Saving queued document ${id} for user ${userId}`);
+    
+    const [insertedDocument] = await db.insert(documents).values({
+      id,
+      userId,
+      fileName,
+      fileType,
+      fileSize,
+      blobUrl,
+      processingStatus: 'pending',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      processedChunks: 0
+    }).returning();
+    
+    console.log(`Saved queued document ${id}`);
+    return insertedDocument;
+  } catch (error) {
+    console.error('Failed to save queued document in database', error);
+    throw error;
   }
 }
