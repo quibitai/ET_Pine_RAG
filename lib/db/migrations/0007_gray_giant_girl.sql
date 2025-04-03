@@ -37,6 +37,27 @@ BEGIN
 END $$;
 --> statement-breakpoint
 
+-- Handle the naming inconsistency between the schema definitions
+DO $$
+BEGIN
+  -- Check if the created_at column exists but createdAt doesn't
+  IF EXISTS (SELECT FROM pg_attribute 
+            WHERE attrelid = 'public.documents'::regclass
+            AND attname = 'created_at'
+            AND NOT attisdropped) AND
+     NOT EXISTS (SELECT FROM pg_attribute 
+                WHERE attrelid = 'public.documents'::regclass
+                AND attname = 'createdAt'
+                AND NOT attisdropped) THEN
+    
+    -- Add a createdAt column that's a copy of created_at for foreign key references
+    ALTER TABLE "documents" ADD COLUMN "createdAt" timestamp;
+    UPDATE "documents" SET "createdAt" = "created_at";
+    ALTER TABLE "documents" ALTER COLUMN "createdAt" SET NOT NULL;
+  END IF;
+END $$;
+--> statement-breakpoint
+
 -- Update foreign key constraints if needed
 DO $$ 
 BEGIN
@@ -45,10 +66,11 @@ BEGIN
             WHERE conname = 'Suggestion_documentId_documentCreatedAt_Document_id_createdAt_fk') THEN
     ALTER TABLE "Suggestion" DROP CONSTRAINT "Suggestion_documentId_documentCreatedAt_Document_id_createdAt_fk";
 
-    -- Add the new constraint referencing the renamed table
-    ALTER TABLE "Suggestion" ADD CONSTRAINT "Suggestion_documentId_documentCreatedAt_documents_id_created_at_fk" 
+    -- Add the new constraint referencing the renamed table with the proper column name 
+    -- (using createdAt to match the schema foreign key definition)
+    ALTER TABLE "Suggestion" ADD CONSTRAINT "Suggestion_documentId_documentCreatedAt_documents_id_createdAt_fk" 
       FOREIGN KEY ("documentId","documentCreatedAt") 
-      REFERENCES "public"."documents"("id","created_at") 
+      REFERENCES "public"."documents"("id","createdAt") 
       ON DELETE no action ON UPDATE no action;
   END IF;
 END $$;
