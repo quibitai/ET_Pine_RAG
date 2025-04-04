@@ -136,21 +136,56 @@ export async function extractTextWithGoogleDocumentAI(fileBytes: Uint8Array): Pr
     
     // Process the document
     console.log(`[RAG Processor] Calling Document AI API with processor name: ${processorName}`);
-    const [result] = await documentClient.processDocument({
-      name: processorName,
-      rawDocument: {
-        content: fileBytes,
-        mimeType: 'application/pdf', // This is a hint, Document AI will detect the correct type
-      },
-    });
     
-    const document = result.document;
-    if (!document || !document.text) {
-      throw new Error('No text extracted from document');
+    // Add special handling for large documents with imageless mode
+    console.log(`[RAG Processor] Enabling imageless mode to support up to 30 pages`);
+    
+    try {
+      // Use an "as any" type assertion to bypass type checking for new API options
+      const request: any = {
+        name: processorName,
+        rawDocument: {
+          content: fileBytes,
+          mimeType: 'application/pdf',
+        },
+        processOptions: {
+          ocrConfig: {
+            enableImageless: true
+          }
+        }
+      };
+      
+      const [result] = await documentClient.processDocument(request);
+      
+      const document = result.document;
+      if (!document || !document.text) {
+        throw new Error('No text extracted from document');
+      }
+      
+      console.log(`[RAG Processor] Text extraction successful, extracted ${document.text.length} characters`);
+      return document.text;
+    } catch (error) {
+      console.error('[RAG Processor] Error extracting text with Google Document AI:', error);
+      if (error instanceof Error && (error.message.includes('Could not load the default credentials') || 
+                                   error.message.includes('permission denied') || 
+                                   error.message.includes('invalid_grant'))) {
+        console.error("Authentication/Permission Error Detail: Verify GOOGLE_CREDENTIALS_JSON variable content and service account permissions in GCP console.");
+      }
+      
+      // Enhanced error diagnostics
+      if (error instanceof Error && error.message.includes('INVALID_ARGUMENT')) {
+        console.error('[RAG Processor] INVALID_ARGUMENT error detected. This usually means:');
+        console.error('1. The processor ID does not exist in this project');
+        console.error('2. The location is incorrect (should be "us" based on your processor)');
+        console.error('3. The project ID in environment variable does not match the service account project');
+        console.error(`Current configuration: Project=${PROJECT_ID}, Location=${LOCATION}, ProcessorID=${PROCESSOR_ID}`);
+        
+        // Suggest the correct format based on screenshots
+        console.error(`[RAG Processor] Try using this exact processor string: projects/openwebui-451318/locations/us/processors/5df939cb6b4e3bd4`);
+      }
+      
+      throw error;
     }
-    
-    console.log(`[RAG Processor] Text extraction successful, extracted ${document.text.length} characters`);
-    return document.text;
   } catch (error) {
     console.error('[RAG Processor] Error extracting text with Google Document AI:', error);
     if (error instanceof Error && (error.message.includes('Could not load the default credentials') || 
