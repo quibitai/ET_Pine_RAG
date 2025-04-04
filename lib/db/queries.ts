@@ -585,7 +585,7 @@ export async function incrementProcessedChunks({ id }: { id: string }) {
     // Use SQL raw query to atomically increment the processedChunks count
     const [updatedDocument] = await db.execute(sql`
       UPDATE documents
-      SET processed_chunks = processed_chunks + 1,
+      SET "processedChunks" = "processedChunks" + 1,
           updated_at = NOW()
       WHERE id = ${id}
       RETURNING *;
@@ -594,8 +594,8 @@ export async function incrementProcessedChunks({ id }: { id: string }) {
     // Return the updated document with the new counts
     return {
       id: updatedDocument.id,
-      processedChunks: updatedDocument.processed_chunks,
-      totalChunks: updatedDocument.total_chunks
+      processedChunks: updatedDocument.processedChunks,
+      totalChunks: updatedDocument.totalChunks
     };
   } catch (error) {
     console.error('Error incrementing processed chunks:', error);
