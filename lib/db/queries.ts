@@ -586,7 +586,7 @@ export async function incrementProcessedChunks({ id }: { id: string }) {
     const [updatedDocument] = await db.execute(sql`
       UPDATE documents
       SET "processedChunks" = "processedChunks" + 1,
-          updated_at = NOW()
+          "updatedAt" = NOW()
       WHERE id = ${id}
       RETURNING *;
     `);
