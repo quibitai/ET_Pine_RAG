@@ -99,14 +99,63 @@ const qstashClient = new QStashClient({
 });
 
 /**
+ * Determines the MIME type from a file name or extension
+ * @param {string} fileName - The name of the file
+ * @returns {string} The MIME type
+ */
+function getMimeTypeFromFileName(fileName: string): string {
+  const extension = fileName.split('.').pop()?.toLowerCase() || '';
+  
+  const mimeTypeMap: Record<string, string> = {
+    // Document formats
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'rtf': 'application/rtf',
+    'txt': 'text/plain',
+    
+    // Spreadsheet formats
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'csv': 'text/csv',
+    
+    // Presentation formats
+    'ppt': 'application/vnd.ms-powerpoint',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    
+    // Default to PDF if unknown
+    '': 'application/pdf'
+  };
+  
+  return mimeTypeMap[extension] || 'application/pdf';
+}
+
+/**
+ * Checks if a file is a PDF based on its MIME type
+ * @param {string} mimeType - The MIME type
+ * @returns {boolean} True if the file is a PDF
+ */
+function isPdf(mimeType: string): boolean {
+  return mimeType === 'application/pdf';
+}
+
+/**
  * Extracts text from a document using Google Document AI.
  * @param {Uint8Array} fileBytes - The binary content of the file.
+ * @param {string} fileName - The name of the file for MIME type detection.
  * @returns {Promise<string>} The extracted text.
  */
-export async function extractTextWithGoogleDocumentAI(fileBytes: Uint8Array): Promise<string> {
+export async function extractTextWithGoogleDocumentAI(
+  fileBytes: Uint8Array, 
+  fileName: string = ''
+): Promise<string> {
   try {
-    console.log('[RAG Processor] Starting Google Document AI text extraction');
+    console.log(`[RAG Processor] Starting Google Document AI text extraction for ${fileName || 'document'}`);
     const processorName = `projects/${PROJECT_ID}/locations/${LOCATION}/processors/${PROCESSOR_ID}`;
+    
+    // Determine MIME type from file name
+    const mimeType = getMimeTypeFromFileName(fileName);
+    console.log(`[RAG Processor] Detected MIME type: ${mimeType} for file: ${fileName}`);
     
     // Add detailed debugging
     console.log('[RAG Processor] Document AI Configuration:');
@@ -133,12 +182,15 @@ export async function extractTextWithGoogleDocumentAI(fileBytes: Uint8Array): Pr
     
     // Log document file info
     console.log(`[RAG Processor] - Document size: ${fileBytes?.length || 0} bytes`);
+    console.log(`[RAG Processor] - Format: ${mimeType}`);
     
     // Process the document
     console.log(`[RAG Processor] Calling Document AI API with processor name: ${processorName}`);
     
-    // Add special handling for large documents with imageless mode
-    console.log(`[RAG Processor] Explicitly enabling imageless mode to support up to 30 pages`);
+    // For PDFs, add special handling for large documents with imageless mode
+    if (isPdf(mimeType)) {
+      console.log(`[RAG Processor] Explicitly enabling imageless mode for PDF to support up to 30 pages`);
+    }
     
     try {
       // Explicitly format the request according to the Google Cloud API documentation
@@ -147,20 +199,22 @@ export async function extractTextWithGoogleDocumentAI(fileBytes: Uint8Array): Pr
         name: processorName,
         rawDocument: {
           content: fileBytes,
-          mimeType: 'application/pdf',
+          mimeType: mimeType,
         },
         skipHumanReview: true,  // Add this parameter
       };
       
-      // Add the process options directly
-      // @ts-ignore - Add imageless mode directly to bypass type issues
-      request.processOptions = {
-        ocrConfig: {
-          enableImageless: true,
-        },
-      };
+      // Add special processing options for PDFs
+      if (isPdf(mimeType)) {
+        // @ts-ignore - Add imageless mode directly to bypass type issues
+        request.processOptions = {
+          ocrConfig: {
+            enableImageless: true,
+          },
+        };
+      }
       
-      console.log(`[RAG Processor] Request with imageless mode configured:`, 
+      console.log(`[RAG Processor] Request configured with MIME type ${mimeType}:`, 
                  JSON.stringify({
                    ...request, 
                    rawDocument: { ...request.rawDocument, content: `[${fileBytes.length} bytes]` }
@@ -425,7 +479,7 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
     });
     
     // Extract text using Google Document AI
-    const extractedText = await extractTextWithGoogleDocumentAI(fileBytes);
+    const extractedText = await extractTextWithGoogleDocumentAI(fileBytes, docDetails.fileName);
     if (!extractedText || extractedText.trim() === '') {
       throw new Error('No text could be extracted from the document');
     }
