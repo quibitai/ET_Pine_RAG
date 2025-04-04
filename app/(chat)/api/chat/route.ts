@@ -391,6 +391,9 @@ export async function POST(request: Request) {
     console.log(`Milestone: Pre-processing completed in ${milestone1Time}ms`);
 
     let contextText = '';
+    // Define pineconeQueryResults at a higher scope to be accessible later
+    let pineconeQueryResults: any = null;
+    
     if (userMessage.parts[0] && 'text' in userMessage.parts[0] && userMessage.parts[0].text) {
       try {
         const userQuery = userMessage.parts[0].text;
@@ -418,28 +421,28 @@ export async function POST(request: Request) {
           console.log('[API Chat] Attempting to call queryPineconeWithDiagnostics...');
           
           try {
-            const queryResults = await queryPineconeWithDiagnostics(
+            pineconeQueryResults = await queryPineconeWithDiagnostics(
               INDEX_NAME,
               embedding,
               5,
               { userId: session.user.id }
             );
             
-            if (queryResults.matches && Array.isArray(queryResults.matches) && queryResults.matches.length > 0) {
+            if (pineconeQueryResults.matches && Array.isArray(pineconeQueryResults.matches) && pineconeQueryResults.matches.length > 0) {
               console.time('process_query_results');
-              contextText = queryResults.matches
-                .map(match => {
+              contextText = pineconeQueryResults.matches
+                .map((match: any) => {
                   const text = match.metadata?.text || '';
                   const source = match.metadata?.source || 'Unknown document';
                   const score = match.score ? Math.round(match.score * 100) / 100 : 0;
                   return `[SOURCE: ${source}] (relevance: ${score})\n${text}`;
                 })
-                .filter(text => text.length > 0)
+                .filter((text: string) => text.length > 0)
                 .join('\n\n');
               console.timeEnd('process_query_results');
               
               console.log(`Found relevant context (${contextText.length} characters)`);
-              console.log(`Retrieved ${queryResults.matches.length} relevant chunks from documents`);
+              console.log(`Retrieved ${pineconeQueryResults.matches.length} relevant chunks from documents`);
             } else {
               console.log('No relevant context found in user documents');
             }
@@ -463,7 +466,7 @@ export async function POST(request: Request) {
           console.time('pinecone_direct_query');
           try {
             const index = getPineconeIndex();
-            const queryResults = await index.query({
+            pineconeQueryResults = await index.query({
               vector: embedding,
               topK: 5,
               filter: { userId: session.user.id },
@@ -471,15 +474,15 @@ export async function POST(request: Request) {
             });
             console.timeEnd('pinecone_direct_query');
             
-            if (queryResults.matches && Array.isArray(queryResults.matches) && queryResults.matches.length > 0) {
-              contextText = queryResults.matches
-                .map(match => {
+            if (pineconeQueryResults.matches && Array.isArray(pineconeQueryResults.matches) && pineconeQueryResults.matches.length > 0) {
+              contextText = pineconeQueryResults.matches
+                .map((match: any) => {
                   const text = match.metadata?.text || '';
                   const source = match.metadata?.source || 'Unknown document';
                   const score = match.score ? Math.round(match.score * 100) / 100 : 0;
                   return `[SOURCE: ${source}] (relevance: ${score})\n${text}`;
                 })
-                .filter(text => text.length > 0)
+                .filter((text: string) => text.length > 0)
                 .join('\n\n');
               
               console.log(`Fallback query successful: Found relevant context (${contextText.length} characters)`);
@@ -502,14 +505,128 @@ export async function POST(request: Request) {
 
     console.time('prepare_prompt');
     let enhancedSystemPrompt = systemPrompt({ selectedChatModel });
+    
+    // Define generic queries that likely refer to a recently uploaded document
+    const genericQueries = [
+      'summarize',
+      'summarize this',
+      'summarize document',
+      'summarize this document',
+      'what is this about',
+      'what is this document about',
+      'what does this say',
+      'can you explain this document',
+      'what is in this file',
+      'tell me about this document',
+      'explain this',
+      'analyze this document',
+      'extract key points',
+      'give me the main points'
+    ];
+    
+    // Try to identify the intended document if this appears to be a generic query
+    let intendedDocumentId = '';
+    let intendedDocumentName = '';
+    let relevanceScore = 0;
+    
+    // Extract query text for checking if it's a generic query
+    const userQueryText = userMessage.parts[0] && 'text' in userMessage.parts[0] ? 
+                         userMessage.parts[0].text.toLowerCase().trim() : '';
+    
+    // Check if the query is a generic one likely referring to a document
+    const isGenericQuery = genericQueries.some(q => 
+      userQueryText === q || 
+      userQueryText.startsWith(q + ' ') || 
+      userQueryText.includes(q)
+    );
+    
+    console.log(`[API Chat] Query text: "${userQueryText}"`);
+    console.log(`[API Chat] Is generic document query: ${isGenericQuery}`);
+    
+    // Check if the most recent user message has exactly one attachment
+    if (isGenericQuery && userMessage.experimental_attachments && userMessage.experimental_attachments.length === 1) {
+      const attachment = userMessage.experimental_attachments[0];
+      console.log(`[API Chat] Message has one attachment: ${attachment.name || 'unnamed'}`);
+      
+      // Try to extract documentId from attachment
+      // @ts-ignore - Check if documentId exists on the attachment object
+      if (attachment.documentId) {
+        // @ts-ignore - Use the documentId from the attachment
+        intendedDocumentId = attachment.documentId;
+        console.log(`[API Chat] Found documentId on attachment: ${intendedDocumentId}`);
+      } else if (attachment.url) {
+        // Extract from URL if possible
+        const urlMatch = attachment.url.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i);
+        if (urlMatch && urlMatch[1]) {
+          intendedDocumentId = urlMatch[1];
+          console.log(`[API Chat] Extracted documentId from URL: ${intendedDocumentId}`);
+        }
+      }
+      
+      // Use name for reference
+      intendedDocumentName = attachment.name || 'recently uploaded document';
+    }
+    
+    // Only perform additional checks if we have context and identified a potential document
+    if (contextText && intendedDocumentId) {
+      console.log(`[API Chat] Checking relevance of context to document: ${intendedDocumentId}`);
+      
+      try {
+        // Check if the Pinecone results contain chunks from the intended document
+        if (pineconeQueryResults && pineconeQueryResults.matches && Array.isArray(pineconeQueryResults.matches)) {
+          // Count matches that belong to the intended document
+          const relevantMatches = pineconeQueryResults.matches.filter((match: any) => 
+            match.metadata && match.metadata.documentId === intendedDocumentId
+          );
+          
+          const relevantCount = relevantMatches.length;
+          const totalMatches = pineconeQueryResults.matches.length;
+          
+          // Calculate a relevance score (0-100%)
+          relevanceScore = totalMatches > 0 ? (relevantCount / totalMatches) * 100 : 0;
+          
+          console.log(`[API Chat] Relevance Check: ${relevantCount}/${totalMatches} matches (${relevanceScore.toFixed(1)}%) belong to intended document`);
+          
+          // Get document name from metadata if available
+          if (relevantMatches.length > 0 && relevantMatches[0].metadata && relevantMatches[0].metadata.source) {
+            intendedDocumentName = relevantMatches[0].metadata.source;
+            console.log(`[API Chat] Using source name from metadata: ${intendedDocumentName}`);
+          }
+        }
+      } catch (error) {
+        console.error('[API Chat] Error checking document relevance:', error);
+      }
+    }
+    
     if (contextText) {
       console.log(`Context length: ${contextText.length} characters`);
+      
+      // Base instruction for using the context
+      let contextInstructions = `Use the above context information to answer the user's question if relevant. When using information from the context, mention the source document (e.g., "According to [SOURCE NAME]"). If the context doesn't contain information relevant to the user's query, rely on your general knowledge or web search.`;
+      
+      // Add specific instructions based on query type and relevance
+      if (isGenericQuery) {
+        if (intendedDocumentId && relevanceScore >= 50) {
+          // High relevance - Add specific instruction to focus on the intended document
+          contextInstructions = `IMPORTANT: The user is referring to the document "${intendedDocumentName}". Please provide a comprehensive summary or analysis based on the context provided from that document. When using information from the context, mention the source document (e.g., "According to [SOURCE NAME]").`;
+          console.log(`[API Chat] Added instruction to focus on document: ${intendedDocumentName}`);
+        } else if (intendedDocumentId) {
+          // Low relevance but we know which document they mean - Guide the AI to handle this
+          contextInstructions = `NOTE: The user appears to be asking about the document "${intendedDocumentName}", but the retrieved context may not contain sufficient information from this document. Please do your best to summarize the available context, mentioning the source document (e.g., "According to [SOURCE NAME]"). If the context isn't sufficient, politely explain that you don't have enough information about this specific document.`;
+          console.log(`[API Chat] Added instruction for low-relevance document: ${intendedDocumentName}`);
+        } else {
+          // Generic query but no specific document identified - Add clarification instruction
+          contextInstructions = `NOTE: The user asked a generic question about a document, but it's unclear which specific document they're referring to. Use the context provided if relevant, mentioning the source document (e.g., "According to [SOURCE NAME]"). If you're unsure which document they mean, please ask for clarification.`;
+          console.log(`[API Chat] Added instruction to seek clarification for generic query`);
+        }
+      }
+      
       enhancedSystemPrompt = `${enhancedSystemPrompt}
 
 RELEVANT DOCUMENT CONTEXT:
 ${contextText}
 
-Use the above context information to answer the user's question if relevant. When using information from the context, mention the source document (e.g., "According to [SOURCE NAME]"). If the context doesn't contain information relevant to the user's query, rely on your general knowledge or web search.`;
+${contextInstructions}`;
     }
     console.timeEnd('prepare_prompt');
 
