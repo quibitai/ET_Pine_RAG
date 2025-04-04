@@ -21,13 +21,24 @@ try {
   console.error("Failed to parse GOOGLE_CREDENTIALS_JSON to extract project_id:", e);
 }
 
+// Ensure worker URL has proper protocol
+function ensureCompleteUrl(url: string): string {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return `https://${url}`;
+  }
+  return url;
+}
+
 // Environment variables with fallbacks
 const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || credentialsProjectId || '';
 const LOCATION = process.env.DOCUMENT_AI_LOCATION || 'us'; // e.g., 'us'
 const PROCESSOR_ID = process.env.DOCUMENT_AI_PROCESSOR_ID || '';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
 const QSTASH_TOKEN = process.env.QSTASH_TOKEN || '';
-const WORKER_URL = process.env.QSTASH_WORKER_URL || 'https://example.vercel.app/api/rag-worker';
+// Process worker URL to ensure it has https:// prefix
+const rawWorkerUrl = process.env.QSTASH_WORKER_URL || 'example.vercel.app/api/rag-worker';
+const WORKER_URL = ensureCompleteUrl(rawWorkerUrl);
+console.log(`Using QStash worker URL: ${WORKER_URL}`);
 
 // Initialize the Document AI client with explicit credentials
 let documentClient: DocumentProcessorServiceClient;
@@ -282,6 +293,7 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
     
     // Queue chunk processing jobs
     console.log(`[RAG Processor] Queueing ${totalChunks} embedding jobs for document ${documentId}`);
+    console.log(`[RAG Processor] Using worker URL: ${WORKER_URL}`);
     
     await Promise.all(textChunks.map(async (chunkText, chunkIndex) => {
       try {
@@ -297,14 +309,22 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
           documentName: docDetails.fileName
         };
         
-        // Send to QStash
-        await qstashClient.publishJSON({
+        // Send to QStash with validated URL
+        console.log(`[RAG Processor] Publishing to QStash with URL: ${WORKER_URL}`);
+        const qstashResult = await qstashClient.publishJSON({
           url: WORKER_URL,
           body: payload,
           retries: 3
         });
+        
+        console.log(`[RAG Processor] Successfully queued chunk ${chunkIndex+1}, QStash messageId: ${qstashResult?.messageId || 'unknown'}`);
+        
       } catch (error) {
         console.error(`[RAG Processor] Error queueing job for chunk ${chunkIndex}:`, error);
+        if (error instanceof Error && error.message.includes('invalid destination url')) {
+          console.error(`[RAG Processor] URL format error. Worker URL being used: "${WORKER_URL}"`);
+          console.error(`[RAG Processor] Original QSTASH_WORKER_URL env variable: "${rawWorkerUrl}"`);
+        }
         // We continue processing other chunks even if one fails
       }
     }));
