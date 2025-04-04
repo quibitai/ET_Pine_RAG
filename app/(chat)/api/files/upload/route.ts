@@ -248,7 +248,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Return success response
     return NextResponse.json({
       documentId,
-      url
+      url,
+      fileName: file.name,
+      contentType: file.type,
+      fileSize: file.size
     });
 
   } catch (error) {

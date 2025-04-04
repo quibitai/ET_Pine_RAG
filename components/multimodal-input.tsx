@@ -126,6 +126,24 @@ function PureMultimodalInput({
     chatId,
   ]);
 
+  const getContentTypeFromFileName = (filename: string): string => {
+    const lowercase = filename.toLowerCase();
+    if (lowercase.endsWith('.pdf')) return 'application/pdf';
+    if (lowercase.endsWith('.txt')) return 'text/plain';
+    if (lowercase.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (lowercase.endsWith('.doc')) return 'application/msword';
+    if (lowercase.endsWith('.jpg') || lowercase.endsWith('.jpeg')) return 'image/jpeg';
+    if (lowercase.endsWith('.png')) return 'image/png';
+    if (lowercase.endsWith('.gif')) return 'image/gif';
+    if (lowercase.endsWith('.svg')) return 'image/svg+xml';
+    if (lowercase.endsWith('.webp')) return 'image/webp';
+    if (lowercase.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (lowercase.endsWith('.xls')) return 'application/vnd.ms-excel';
+    if (lowercase.endsWith('.csv')) return 'text/csv';
+    if (lowercase.endsWith('.md')) return 'text/markdown';
+    return '';
+  };
+
   const uploadFile = async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -138,12 +156,15 @@ function PureMultimodalInput({
 
       if (response.ok) {
         const data = await response.json();
-        const { url, pathname, contentType } = data;
+        const { url, documentId, contentType } = data;
 
+        console.log(`File uploaded successfully: ${file.name}, ID: ${documentId}`);
+        
         return {
           url,
-          name: pathname,
-          contentType: contentType,
+          name: file.name,
+          contentType: contentType || file.type,
+          documentId
         };
       }
       const { error } = await response.json();
@@ -157,6 +178,7 @@ function PureMultimodalInput({
     async (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files || []);
 
+      // Create preview entries with inferred content types
       setUploadQueue(files.map((file) => file.name));
 
       try {
@@ -212,7 +234,7 @@ function PureMultimodalInput({
               attachment={{
                 url: '',
                 name: filename,
-                contentType: '',
+                contentType: getContentTypeFromFileName(filename),
               }}
               isUploading={true}
             />
