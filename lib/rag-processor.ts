@@ -176,7 +176,7 @@ export async function extractTextWithGoogleDocumentAI(fileBytes: Uint8Array): Pr
 }
 
 /**
- * Generates embeddings for text using Google's embedding model.
+ * Generates embeddings for text using OpenAI's embedding model.
  * @param {string} text - The text to embed.
  * @returns {Promise<number[]>} The embedding vector.
  */
@@ -205,6 +205,42 @@ export async function generateEmbeddings(text: string): Promise<number[]> {
       
       throw new Error("Cannot generate embeddings: GOOGLE_API_KEY environment variable is not set");
     }
+    
+    // Check for OpenAI API key for embeddings (to match Pinecone dimensions)
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    
+    // If OpenAI API key is available, use it (produces 3072 dimension vectors)
+    if (openaiApiKey) {
+      console.log("[RAG Processor] Using OpenAI for embeddings to match Pinecone dimensions (3072)");
+      
+      // Create fetch request to OpenAI embeddings API
+      const response = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiApiKey}`
+        },
+        body: JSON.stringify({
+          input: text,
+          model: "text-embedding-3-large"  // 3072 dimensions to match Pinecone
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}. ${JSON.stringify(errorData)}`);
+      }
+      
+      const data = await response.json();
+      const embedding = data.data[0].embedding;
+      
+      console.log(`[RAG Processor] Successfully generated OpenAI embedding vector of length ${embedding.length}`);
+      return embedding;
+    }
+    
+    // Fallback to Google AI if OpenAI key is not available (but show warning about dimension mismatch)
+    console.warn("[RAG Processor] WARNING: Using Google AI for embeddings but dimensions (768) don't match Pinecone (3072)");
+    console.warn("[RAG Processor] Set OPENAI_API_KEY to fix dimension mismatch with Pinecone");
     
     // Initialize the genAI client directly with the API key
     console.log(`[RAG Processor] Initializing Google AI with API key (${apiKey.substring(0, 4)}...)`);
