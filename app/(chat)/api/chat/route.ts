@@ -516,8 +516,44 @@ Use the above context information to answer the user's question if relevant. Whe
     console.log("Creating data stream response with model:", selectedChatModel);
     console.time('stream_text_call');
     
+    // Define attachments that are directly supported by the AI model
+    const supportedAttachmentTypesForAI = [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp'
+      // Note: 'application/pdf' is intentionally excluded until confirmed supported
+    ];
+    
+    // Filter messages to only include supported attachment types
+    console.log('[API Chat] Filtering attachments before sending to AI model...');
+    const messagesForAI = messages.map(message => {
+      if (message.role === 'user' && message.experimental_attachments && message.experimental_attachments.length > 0) {
+        const originalCount = message.experimental_attachments.length;
+        const filteredAttachments = message.experimental_attachments.filter(att => {
+          const isSupported = att.contentType && supportedAttachmentTypesForAI.includes(att.contentType);
+          if (!isSupported) {
+            console.log(`[API Chat] Filtering out unsupported attachment type: ${att.contentType} (Name: ${att.name || 'N/A'})`);
+          }
+          return isSupported;
+        });
+        
+        const filteredCount = filteredAttachments.length;
+        if (originalCount > filteredCount) {
+          console.log(`[API Chat] Filtered ${originalCount - filteredCount} unsupported attachments for message ${message.id}`);
+        }
+        
+        return {
+          ...message,
+          experimental_attachments: filteredAttachments
+        };
+      }
+      // Return non-user messages or messages without attachments unmodified
+      return message;
+    });
+    
     // Add diagnostic log to check message structure before streaming
-    console.log('Messages being sent to streamText:', JSON.stringify(
+    console.log('Messages before filtering:', JSON.stringify(
       messages.map(msg => ({
         id: msg.id,
         role: msg.role,
@@ -526,7 +562,22 @@ Use the above context information to answer the user's question if relevant. Whe
         attachmentsCount: msg.experimental_attachments?.length || 0,
         attachments: msg.experimental_attachments?.map(att => ({
           name: att.name,
-          hasContentType: !!att.contentType,
+          contentType: att.contentType
+        }))
+      })),
+      null,
+      2
+    ));
+
+    console.log('Messages after filtering:', JSON.stringify(
+      messagesForAI.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        parts: msg.parts?.map(part => part.type || 'text'),
+        hasAttachments: !!msg.experimental_attachments?.length,
+        attachmentsCount: msg.experimental_attachments?.length || 0,
+        attachments: msg.experimental_attachments?.map(att => ({
+          name: att.name,
           contentType: att.contentType
         }))
       })),
@@ -543,7 +594,7 @@ Use the above context information to answer the user's question if relevant. Whe
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: enhancedSystemPrompt,
-          messages,
+          messages: messagesForAI, // Use filtered messages instead of original messages
           maxSteps: 5,
           experimental_activeTools: [
             'getWeather',
