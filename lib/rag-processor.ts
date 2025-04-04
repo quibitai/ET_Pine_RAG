@@ -138,22 +138,33 @@ export async function extractTextWithGoogleDocumentAI(fileBytes: Uint8Array): Pr
     console.log(`[RAG Processor] Calling Document AI API with processor name: ${processorName}`);
     
     // Add special handling for large documents with imageless mode
-    console.log(`[RAG Processor] Enabling imageless mode to support up to 30 pages`);
+    console.log(`[RAG Processor] Explicitly enabling imageless mode to support up to 30 pages`);
     
     try {
-      // Use an "as any" type assertion to bypass type checking for new API options
-      const request: any = {
+      // Explicitly format the request according to the Google Cloud API documentation
+      // https://cloud.google.com/document-ai/docs/process-documents-client-libraries
+      const request = {
         name: processorName,
         rawDocument: {
           content: fileBytes,
           mimeType: 'application/pdf',
         },
-        processOptions: {
-          ocrConfig: {
-            enableImageless: true
-          }
-        }
+        skipHumanReview: true,  // Add this parameter
       };
+      
+      // Add the process options directly
+      // @ts-ignore - Add imageless mode directly to bypass type issues
+      request.processOptions = {
+        ocrConfig: {
+          enableImageless: true,
+        },
+      };
+      
+      console.log(`[RAG Processor] Request with imageless mode configured:`, 
+                 JSON.stringify({
+                   ...request, 
+                   rawDocument: { ...request.rawDocument, content: `[${fileBytes.length} bytes]` }
+                 }, null, 2));
       
       const [result] = await documentClient.processDocument(request);
       
