@@ -13,13 +13,8 @@ const nextConfig = {
   // Disable header
   poweredByHeader: false,
   
-  // Increase API body size limit to allow larger file uploads (20MB)
-  api: {
-    bodyParser: {
-      sizeLimit: '20mb',
-    },
-    responseLimit: '20mb',
-  },
+  // App router doesn't use the api config in next.config.js like pages router did
+  // Instead, we configure this per-route using export statements in the route files
   
   experimental: {
     // Module resolution

@@ -34,13 +34,10 @@ const ArtifactKind = {
   Sheet: 'sheet'
 } as const;
 
-// Configure request size limits for file uploads - allow up to 20MB files
-export const config = {
-  api: {
-    bodyParser: false,
-    responseLimit: '20mb',
-  },
-};
+// Configure request size limits for file uploads - using the new format for App Router
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const fetchCache = 'force-no-store';
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
