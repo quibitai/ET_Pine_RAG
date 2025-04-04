@@ -34,6 +34,11 @@ const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || credentialsProjectId || '';
 const LOCATION = process.env.DOCUMENT_AI_LOCATION || 'us'; // e.g., 'us'
 const PROCESSOR_ID = process.env.DOCUMENT_AI_PROCESSOR_ID || '';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
+if (!GOOGLE_API_KEY) {
+  console.error("❌ CRITICAL: GOOGLE_API_KEY environment variable is not set!");
+} else {
+  console.log(`✅ GOOGLE_API_KEY is set (${GOOGLE_API_KEY.substring(0, 4)}...${GOOGLE_API_KEY.substring(GOOGLE_API_KEY.length - 4)})`);
+}
 const QSTASH_TOKEN = process.env.QSTASH_TOKEN || '';
 // Process worker URL to ensure it has https:// prefix
 const rawWorkerUrl = process.env.QSTASH_WORKER_URL || 'example.vercel.app/api/rag-worker';
@@ -160,7 +165,18 @@ export async function generateEmbeddings(text: string): Promise<number[]> {
   try {
     console.log(`[RAG Processor] Generating embeddings for text (length: ${text.length})`);
     
-    const embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
+    // Check API key before proceeding
+    if (!GOOGLE_API_KEY) {
+      throw new Error("Cannot generate embeddings: GOOGLE_API_KEY environment variable is not set");
+    }
+    
+    // Initialize the genAI client directly with the API key to ensure fresh initialization
+    const localGenAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
+    console.log(`[RAG Processor] Initialized Google AI with API key (${GOOGLE_API_KEY.substring(0, 4)}...)`);
+    
+    const embeddingModel = localGenAI.getGenerativeModel({ model: "embedding-001" });
+    console.log(`[RAG Processor] Created embedding model, generating embeddings...`);
+    
     const result = await embeddingModel.embedContent(text);
     const embedding = result.embedding.values;
     
@@ -168,6 +184,26 @@ export async function generateEmbeddings(text: string): Promise<number[]> {
     return embedding;
   } catch (error) {
     console.error('[RAG Processor] Error generating embeddings:', error);
+    
+    // Enhanced error diagnostics for API key issues
+    if (error instanceof Error && 
+        (error.message.includes('403 Forbidden') || 
+         error.message.includes('unregistered callers') || 
+         error.message.includes('API Key'))) {
+      
+      console.error('[RAG Processor] Authentication error with Google AI API:');
+      console.error(`[RAG Processor] 1. Check that GOOGLE_API_KEY environment variable is set in Vercel`);
+      console.error(`[RAG Processor] 2. Verify the API key is valid and has access to Generative AI API`);
+      console.error(`[RAG Processor] 3. Make sure the API key is enabled for the embedding-001 model`);
+      
+      // Show API key status (safely)
+      if (!GOOGLE_API_KEY) {
+        console.error(`[RAG Processor] Current API key status: NOT SET (empty string)`);
+      } else {
+        console.error(`[RAG Processor] Current API key status: SET (starts with "${GOOGLE_API_KEY.substring(0, 4)}...")`);
+      }
+    }
+    
     throw error;
   }
 }
