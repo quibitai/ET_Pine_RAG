@@ -23,7 +23,9 @@ const documentTypes = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
-  'text/markdown'
+  'text/markdown',
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 ];
 
 // Document kind for database

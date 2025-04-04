@@ -5,6 +5,9 @@ import { DocumentProcessorServiceClient } from '@google-cloud/documentai';
 import { del } from '@vercel/blob';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client as QStashClient } from '@upstash/qstash';
+import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 
 // Environment variables
 const GOOGLE_CREDENTIALS_JSON_CONTENT = process.env.GOOGLE_CREDENTIALS_JSON;
@@ -492,9 +495,10 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
       throw new Error(`Failed to download document from Blob storage: ${documentResponse.statusText}`);
     }
     
-    // Convert to Uint8Array for Document AI
+    // Convert to Uint8Array and Buffer for various processing options
     const fileBuffer = await documentResponse.arrayBuffer();
     const fileBytes = new Uint8Array(fileBuffer);
+    const nodeBuffer = Buffer.from(fileBuffer);
     
     // Update status - starting text extraction
     await updateFileRagStatus({ 
@@ -502,12 +506,132 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
       processingStatus: 'processing', 
       statusMessage: 'Extracting text from document' 
     });
-    
-    // Extract text using Google Document AI
-    const extractedText = await extractTextWithGoogleDocumentAI(fileBytes, docDetails.fileName);
-    if (!extractedText || extractedText.trim() === '') {
-      throw new Error('No text could be extracted from the document');
+
+    // Determine file type from MIME type and extension
+    const fileExtension = docDetails.fileName.split('.').pop()?.toLowerCase() || '';
+    const mimeType = docDetails.fileType.toLowerCase();
+
+    console.log(`[RAG Processor] Attempting extraction for type: ${mimeType}, extension: ${fileExtension}`);
+
+    // --- Conditional Extraction Logic ---
+    let extractedText = '';
+
+    if (mimeType === 'application/pdf') {
+      console.log('[RAG Processor] Using Google Document AI for PDF...');
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'processing', 
+        statusMessage: 'Extracting text using Document AI' 
+      });
+      extractedText = await extractTextWithGoogleDocumentAI(fileBytes, docDetails.fileName);
+    } else if (mimeType === 'text/plain' || fileExtension === 'txt') {
+      console.log('[RAG Processor] Reading plain text file...');
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'processing', 
+        statusMessage: 'Reading plain text' 
+      });
+      extractedText = nodeBuffer.toString('utf-8');
+    } else if (mimeType === 'text/markdown' || fileExtension === 'md') {
+      console.log('[RAG Processor] Reading markdown file as plain text...');
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'processing', 
+        statusMessage: 'Reading markdown file' 
+      });
+      // Basic extraction - just treat as text. Advanced parsing could strip markdown syntax if needed.
+      extractedText = nodeBuffer.toString('utf-8');
+    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileExtension === 'docx') {
+      console.log('[RAG Processor] Extracting text from DOCX using mammoth...');
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'processing', 
+        statusMessage: 'Extracting text from DOCX' 
+      });
+      try {
+        const result = await mammoth.extractRawText({ buffer: nodeBuffer });
+        extractedText = result.value;
+      } catch (docxError) {
+        console.error('[RAG Processor] Error extracting DOCX:', docxError);
+        throw new Error(`Failed to extract text from DOCX: ${docxError instanceof Error ? docxError.message : String(docxError)}`);
+      }
+    } else if (mimeType === 'text/csv' || fileExtension === 'csv') {
+      console.log('[RAG Processor] Extracting text from CSV using papaparse...');
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'processing', 
+        statusMessage: 'Extracting text from CSV' 
+      });
+      try {
+        const csvString = nodeBuffer.toString('utf-8');
+        const result = Papa.parse(csvString, { header: true, skipEmptyLines: true });
+        if (result.errors && result.errors.length > 0) {
+          console.warn('[RAG Processor] CSV parsing errors encountered:', result.errors);
+        }
+        // Convert parsed data to a simple textual representation for RAG
+        extractedText = result.data.map((row: any, index: number) => {
+          return `Row ${index + 1}: ${Object.entries(row).map(([key, value]) => `${key} is "${value}"`).join(', ')}`;
+        }).join('\n');
+      } catch (csvError) {
+        console.error('[RAG Processor] Error extracting CSV:', csvError);
+        throw new Error(`Failed to extract text from CSV: ${csvError instanceof Error ? csvError.message : String(csvError)}`);
+      }
+    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || fileExtension === 'xlsx') {
+      console.log('[RAG Processor] Extracting text from XLSX using SheetJS...');
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'processing', 
+        statusMessage: 'Extracting text from XLSX' 
+      });
+      try {
+        const workbook = XLSX.read(nodeBuffer, { type: 'buffer' });
+        let combinedText = '';
+        workbook.SheetNames.forEach(sheetName => {
+          combinedText += `Sheet: ${sheetName}\n`;
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { header: 1 }); // Get array of arrays
+          jsonData.forEach((row: any[], rowIndex: number) => {
+            combinedText += `Row ${rowIndex + 1}: ${row.map((cell: any, colIndex: number) => `Column ${colIndex + 1} is "${cell}"`).join(', ')}\n`;
+          });
+          combinedText += '\n';
+        });
+        extractedText = combinedText.trim();
+      } catch (xlsxError) {
+        console.error('[RAG Processor] Error extracting XLSX:', xlsxError);
+        throw new Error(`Failed to extract text from XLSX: ${xlsxError instanceof Error ? xlsxError.message : String(xlsxError)}`);
+      }
+    } else {
+      // Fallback - try Document AI as a last resort
+      console.warn(`[RAG Processor] Unsupported file type: ${mimeType} / ${fileExtension}. Trying Document AI as fallback.`);
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'processing', 
+        statusMessage: `Attempting extraction with Document AI` 
+      });
+      try {
+        extractedText = await extractTextWithGoogleDocumentAI(fileBytes, docDetails.fileName);
+      } catch (fallbackError) {
+        console.error('[RAG Processor] Fallback extraction failed:', fallbackError);
+        await updateFileRagStatus({ 
+          id: documentId, 
+          processingStatus: 'failed', 
+          statusMessage: `Unsupported file type: ${mimeType}` 
+        });
+        throw new Error(`Unsupported file type for RAG processing: ${mimeType}`);
+      }
     }
+
+    // Ensure extractedText is not empty before proceeding
+    if (!extractedText || extractedText.trim().length === 0) {
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'failed', 
+        statusMessage: 'No text content extracted from the document.' 
+      });
+      throw new Error('No text extracted from document');
+    }
+
+    console.log(`[RAG Processor] Extracted ${extractedText.length} characters.`);
     
     // Chunk the text
     const textChunks = chunkText(extractedText);
