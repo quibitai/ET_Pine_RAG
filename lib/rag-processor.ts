@@ -140,8 +140,8 @@ function isPdf(mimeType: string): boolean {
 }
 
 /**
- * Converts file bytes to PDF format for non-PDF documents if needed.
- * For now, this simply uses a fallback approach of treating the non-PDF documents as PDFs.
+ * Prepares document for processing based on file type.
+ * Different file types might need different handling for Document AI.
  * @param {Uint8Array} fileBytes - Original file bytes
  * @param {string} mimeType - Original MIME type
  * @param {string} fileName - Original file name
@@ -152,15 +152,8 @@ async function prepareDocumentForProcessing(
   mimeType: string,
   fileName: string
 ): Promise<{fileBytes: Uint8Array, mimeType: string}> {
-  // The Document AI processor we're using only supports PDF
-  // So for any other format, we'll need to change the MIME type to PDF
-  if (mimeType !== 'application/pdf') {
-    console.log(`[RAG Processor] Document is not a PDF (${mimeType}). Using application/pdf MIME type for Document AI.`);
-    return {
-      fileBytes,
-      mimeType: 'application/pdf'
-    };
-  }
+  // The Document AI processor should handle the actual MIME type
+  console.log(`[RAG Processor] Processing document with native MIME type: ${mimeType}`);
   
   return {
     fileBytes,
@@ -213,14 +206,9 @@ export async function extractTextWithGoogleDocumentAI(
     console.log(`[RAG Processor] - Document size: ${fileBytes?.length || 0} bytes`);
     console.log(`[RAG Processor] - Format: ${originalMimeType}`);
     
-    // Process the document - prepare document for processing (convert if needed)
+    // Process the document - prepare document for processing
     const { fileBytes: processedBytes, mimeType: processedMimeType } = 
       await prepareDocumentForProcessing(fileBytes, originalMimeType, fileName);
-    
-    // Log if the format was changed
-    if (originalMimeType !== processedMimeType) {
-      console.log(`[RAG Processor] - Converting from ${originalMimeType} to ${processedMimeType} for Document AI compatibility`);
-    }
     
     console.log(`[RAG Processor] Calling Document AI API with processor name: ${processorName}`);
     
@@ -241,7 +229,7 @@ export async function extractTextWithGoogleDocumentAI(
         skipHumanReview: true,  // Add this parameter
       };
       
-      // Add special processing options for PDFs
+      // Add special processing options for PDFs only
       if (isPdf(processedMimeType)) {
         // @ts-ignore - Add imageless mode directly to bypass type issues
         request.processOptions = {
