@@ -13,6 +13,14 @@ const nextConfig = {
   // Disable header
   poweredByHeader: false,
   
+  // Increase API body size limit to allow larger file uploads (20MB)
+  api: {
+    bodyParser: {
+      sizeLimit: '20mb',
+    },
+    responseLimit: '20mb',
+  },
+  
   experimental: {
     // Module resolution
     typedRoutes: true,

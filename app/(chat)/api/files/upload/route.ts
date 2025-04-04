@@ -34,6 +34,14 @@ const ArtifactKind = {
   Sheet: 'sheet'
 } as const;
 
+// Configure request size limits for file uploads - allow up to 20MB files
+export const config = {
+  api: {
+    bodyParser: false,
+    responseLimit: '20mb',
+  },
+};
+
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     // Verify authentication
@@ -54,6 +62,18 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json(
         { error: 'No file provided' },
         { status: 400 }
+      );
+    }
+
+    // Log file details to help with debugging
+    console.log(`[Upload API] Processing file: ${file.name}, Size: ${(file.size / (1024 * 1024)).toFixed(2)}MB, Type: ${file.type}`);
+    
+    // Check file size limits - 20MB max
+    const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB in bytes
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB` },
+        { status: 413 }
       );
     }
 
