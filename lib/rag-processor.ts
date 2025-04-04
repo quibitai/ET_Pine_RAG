@@ -7,13 +7,27 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client as QStashClient } from '@upstash/qstash';
 
 // Environment variables
-const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || '';
+const GOOGLE_CREDENTIALS_JSON_CONTENT = process.env.GOOGLE_CREDENTIALS_JSON;
+
+// Parse credentials first to potentially extract project ID
+let credentialsProjectId = '';
+try {
+  if (GOOGLE_CREDENTIALS_JSON_CONTENT) {
+    const parsedCredentials = JSON.parse(GOOGLE_CREDENTIALS_JSON_CONTENT);
+    credentialsProjectId = parsedCredentials.project_id || '';
+    console.log(`Extracted project_id from credentials: "${credentialsProjectId}"`);
+  }
+} catch (e) {
+  console.error("Failed to parse GOOGLE_CREDENTIALS_JSON to extract project_id:", e);
+}
+
+// Environment variables with fallbacks
+const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || credentialsProjectId || '';
 const LOCATION = process.env.DOCUMENT_AI_LOCATION || 'us'; // e.g., 'us'
 const PROCESSOR_ID = process.env.DOCUMENT_AI_PROCESSOR_ID || '';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
 const QSTASH_TOKEN = process.env.QSTASH_TOKEN || '';
 const WORKER_URL = process.env.QSTASH_WORKER_URL || 'https://example.vercel.app/api/rag-worker';
-const GOOGLE_CREDENTIALS_JSON_CONTENT = process.env.GOOGLE_CREDENTIALS_JSON;
 
 // Initialize the Document AI client with explicit credentials
 let documentClient: DocumentProcessorServiceClient;
