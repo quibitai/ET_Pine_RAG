@@ -59,7 +59,34 @@ export async function extractTextWithGoogleDocumentAI(fileBytes: Uint8Array): Pr
     console.log('[RAG Processor] Starting Google Document AI text extraction');
     const processorName = `projects/${PROJECT_ID}/locations/${LOCATION}/processors/${PROCESSOR_ID}`;
     
+    // Add detailed debugging
+    console.log('[RAG Processor] Document AI Configuration:');
+    console.log(`[RAG Processor] - Project ID: "${PROJECT_ID}"`);
+    console.log(`[RAG Processor] - Location: "${LOCATION}"`);
+    console.log(`[RAG Processor] - Processor ID: "${PROCESSOR_ID}"`);
+    console.log(`[RAG Processor] - Full Processor Name: "${processorName}"`);
+    
+    // Check for empty values
+    if (!PROJECT_ID) console.error('[RAG Processor] ERROR: PROJECT_ID is empty!');
+    if (!LOCATION) console.error('[RAG Processor] ERROR: LOCATION is empty!');
+    if (!PROCESSOR_ID) console.error('[RAG Processor] ERROR: PROCESSOR_ID is empty!');
+    
+    // Print service account project ID for comparison
+    try {
+      const credentials = JSON.parse(GOOGLE_CREDENTIALS_JSON_CONTENT || '{}');
+      console.log(`[RAG Processor] - Service Account Project ID: "${credentials.project_id}"`);
+      if (credentials.project_id !== PROJECT_ID) {
+        console.error(`[RAG Processor] ERROR: Service account project ID "${credentials.project_id}" doesn't match GOOGLE_PROJECT_ID "${PROJECT_ID}"!`);
+      }
+    } catch (e) {
+      console.error('[RAG Processor] ERROR: Could not parse credentials JSON to compare project IDs');
+    }
+    
+    // Log document file info
+    console.log(`[RAG Processor] - Document size: ${fileBytes?.length || 0} bytes`);
+    
     // Process the document
+    console.log(`[RAG Processor] Calling Document AI API with processor name: ${processorName}`);
     const [result] = await documentClient.processDocument({
       name: processorName,
       rawDocument: {
@@ -82,6 +109,19 @@ export async function extractTextWithGoogleDocumentAI(fileBytes: Uint8Array): Pr
                                  error.message.includes('invalid_grant'))) {
       console.error("Authentication/Permission Error Detail: Verify GOOGLE_CREDENTIALS_JSON variable content and service account permissions in GCP console.");
     }
+    
+    // Enhanced error diagnostics
+    if (error instanceof Error && error.message.includes('INVALID_ARGUMENT')) {
+      console.error('[RAG Processor] INVALID_ARGUMENT error detected. This usually means:');
+      console.error('1. The processor ID does not exist in this project');
+      console.error('2. The location is incorrect (should be "us" based on your processor)');
+      console.error('3. The project ID in environment variable does not match the service account project');
+      console.error(`Current configuration: Project=${PROJECT_ID}, Location=${LOCATION}, ProcessorID=${PROCESSOR_ID}`);
+      
+      // Suggest the correct format based on screenshots
+      console.error(`[RAG Processor] Try using this exact processor string: projects/openwebui-451318/locations/us/processors/5df939cb6b4e3bd4`);
+    }
+    
     throw error;
   }
 }
