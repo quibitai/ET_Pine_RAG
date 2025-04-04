@@ -33,9 +33,28 @@ function ensureCompleteUrl(url: string): string {
 const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || credentialsProjectId || '';
 const LOCATION = process.env.DOCUMENT_AI_LOCATION || 'us'; // e.g., 'us'
 const PROCESSOR_ID = process.env.DOCUMENT_AI_PROCESSOR_ID || '';
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
+
+// Try multiple ways to get the API key
+// First, try to get from process.env directly
+let apiKeyFromEnv = process.env.GOOGLE_API_KEY;
+console.log("API key directly from process.env:", apiKeyFromEnv ? `${apiKeyFromEnv.substring(0, 4)}...` : "NOT SET");
+
+// Log all environment variables (masked for security)
+console.log("All environment variables (first 4 chars only):");
+for (const key in process.env) {
+  if (key.includes("KEY") || key.includes("SECRET") || key.includes("TOKEN")) {
+    const value = process.env[key];
+    console.log(`${key}: ${value ? value.substring(0, 4) + "..." : "NOT SET"}`);
+  } else if (key.includes("GOOGLE")) {
+    const value = process.env[key];
+    console.log(`${key}: ${value || "NOT SET"}`);
+  }
+}
+
+// Try alternative casing (sometimes environment variables can be case-sensitive)
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.google_api_key || '';
 if (!GOOGLE_API_KEY) {
-  console.error("❌ CRITICAL: GOOGLE_API_KEY environment variable is not set!");
+  console.error("❌ CRITICAL: GOOGLE_API_KEY environment variable is not set in any casing!");
 } else {
   console.log(`✅ GOOGLE_API_KEY is set (${GOOGLE_API_KEY.substring(0, 4)}...${GOOGLE_API_KEY.substring(GOOGLE_API_KEY.length - 4)})`);
 }
@@ -165,14 +184,31 @@ export async function generateEmbeddings(text: string): Promise<number[]> {
   try {
     console.log(`[RAG Processor] Generating embeddings for text (length: ${text.length})`);
     
-    // Check API key before proceeding
-    if (!GOOGLE_API_KEY) {
+    // Try multiple approaches to get a working API key
+    let apiKey = GOOGLE_API_KEY;
+    
+    // Log API key status
+    if (!apiKey) {
+      console.error("[RAG Processor] GOOGLE_API_KEY is not set from environment variables");
+      
+      // Alternative: Try to get API key directly
+      apiKey = process.env.GOOGLE_API_KEY || '';
+      console.log(`[RAG Processor] Direct process.env access: API key ${apiKey ? "is set" : "is NOT set"}`);
+      
+      // Log available environment variables (safely)
+      console.log("[RAG Processor] Available environment variables containing 'GOOGLE':");
+      for (const key in process.env) {
+        if (key.includes("GOOGLE")) {
+          console.log(`[RAG Processor] - ${key}: ${process.env[key] ? "is set" : "is NOT set"}`);
+        }
+      }
+      
       throw new Error("Cannot generate embeddings: GOOGLE_API_KEY environment variable is not set");
     }
     
-    // Initialize the genAI client directly with the API key to ensure fresh initialization
-    const localGenAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
-    console.log(`[RAG Processor] Initialized Google AI with API key (${GOOGLE_API_KEY.substring(0, 4)}...)`);
+    // Initialize the genAI client directly with the API key
+    console.log(`[RAG Processor] Initializing Google AI with API key (${apiKey.substring(0, 4)}...)`);
+    const localGenAI = new GoogleGenerativeAI(apiKey);
     
     const embeddingModel = localGenAI.getGenerativeModel({ model: "embedding-001" });
     console.log(`[RAG Processor] Created embedding model, generating embeddings...`);
