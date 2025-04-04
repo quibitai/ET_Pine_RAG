@@ -153,34 +153,103 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
         let inferredContentType = attachment.contentType || ''; // Keep original if it existed but was empty
         
         if (!inferredContentType || inferredContentType === 'application/octet-stream') {
-          // More extensive MIME type inference
-          if (filename.endsWith('.pdf')) inferredContentType = 'application/pdf';
-          else if (filename.endsWith('.txt')) inferredContentType = 'text/plain';
-          else if (filename.endsWith('.docx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-          else if (filename.endsWith('.doc')) inferredContentType = 'application/msword';
-          else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) inferredContentType = 'image/jpeg';
-          else if (filename.endsWith('.png')) inferredContentType = 'image/png';
-          else if (filename.endsWith('.gif')) inferredContentType = 'image/gif';
-          else if (filename.endsWith('.svg')) inferredContentType = 'image/svg+xml';
-          else if (filename.endsWith('.webp')) inferredContentType = 'image/webp';
-          else if (filename.endsWith('.xlsx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-          else if (filename.endsWith('.xls')) inferredContentType = 'application/vnd.ms-excel';
-          else if (filename.endsWith('.csv')) inferredContentType = 'text/csv';
-          else if (filename.endsWith('.pptx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-          else if (filename.endsWith('.ppt')) inferredContentType = 'application/vnd.ms-powerpoint';
-          else if (filename.endsWith('.md')) inferredContentType = 'text/markdown';
-          else if (filename.endsWith('.html') || filename.endsWith('.htm')) inferredContentType = 'text/html';
-          else if (filename.endsWith('.json')) inferredContentType = 'application/json';
-          else if (filename.endsWith('.xml')) inferredContentType = 'application/xml';
-          else if (attachment.url?.includes('.png')) inferredContentType = 'image/png';  
-          else if (attachment.url?.includes('.jpg') || attachment.url?.includes('.jpeg')) inferredContentType = 'image/jpeg';
-          else if (attachment.url?.includes('.pdf')) inferredContentType = 'application/pdf';
-          else inferredContentType = 'application/octet-stream'; // Last resort fallback
+          console.log(`[Attachment Fix] Attempting fallback inference using filename: '${filename}'`);
           
-          console.log(`[Attachment Fix] Inferred content type from name/URL: ${inferredContentType}`);
+          // More extensive MIME type inference
+          if (filename.endsWith('.pdf')) {
+            inferredContentType = 'application/pdf';
+            console.log(`[Attachment Fix] Inferred PDF type from filename`);
+          } else if (filename.endsWith('.txt')) {
+            inferredContentType = 'text/plain';
+            console.log(`[Attachment Fix] Inferred TXT type from filename`);
+          } else if (filename.endsWith('.docx')) {
+            inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            console.log(`[Attachment Fix] Inferred DOCX type from filename`);
+          } else if (filename.endsWith('.doc')) {
+            inferredContentType = 'application/msword';
+            console.log(`[Attachment Fix] Inferred DOC type from filename`);
+          } else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
+            inferredContentType = 'image/jpeg';
+            console.log(`[Attachment Fix] Inferred JPEG type from filename`);
+          } else if (filename.endsWith('.png')) {
+            inferredContentType = 'image/png';
+            console.log(`[Attachment Fix] Inferred PNG type from filename`);
+          } else if (filename.endsWith('.gif')) {
+            inferredContentType = 'image/gif';
+            console.log(`[Attachment Fix] Inferred GIF type from filename`);
+          } else if (filename.endsWith('.svg')) {
+            inferredContentType = 'image/svg+xml';
+            console.log(`[Attachment Fix] Inferred SVG type from filename`);
+          } else if (filename.endsWith('.webp')) {
+            inferredContentType = 'image/webp';
+            console.log(`[Attachment Fix] Inferred WEBP type from filename`);
+          } else if (filename.endsWith('.xlsx')) {
+            inferredContentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            console.log(`[Attachment Fix] Inferred XLSX type from filename`);
+          } else if (filename.endsWith('.xls')) {
+            inferredContentType = 'application/vnd.ms-excel';
+            console.log(`[Attachment Fix] Inferred XLS type from filename`);
+          } else if (filename.endsWith('.csv')) {
+            inferredContentType = 'text/csv';
+            console.log(`[Attachment Fix] Inferred CSV type from filename`);
+          } else if (filename.endsWith('.pptx')) {
+            inferredContentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+            console.log(`[Attachment Fix] Inferred PPTX type from filename`);
+          } else if (filename.endsWith('.ppt')) {
+            inferredContentType = 'application/vnd.ms-powerpoint';
+            console.log(`[Attachment Fix] Inferred PPT type from filename`);
+          } else if (filename.endsWith('.md')) {
+            inferredContentType = 'text/markdown';
+            console.log(`[Attachment Fix] Inferred MD type from filename`);
+          } else if (filename.endsWith('.html') || filename.endsWith('.htm')) {
+            inferredContentType = 'text/html';
+            console.log(`[Attachment Fix] Inferred HTML type from filename`);
+          } else if (filename.endsWith('.json')) {
+            inferredContentType = 'application/json';
+            console.log(`[Attachment Fix] Inferred JSON type from filename`);
+          } else if (filename.endsWith('.xml')) {
+            inferredContentType = 'application/xml';
+            console.log(`[Attachment Fix] Inferred XML type from filename`);
+          } else if (attachment.url?.includes('.png')) {
+            inferredContentType = 'image/png';
+            console.log(`[Attachment Fix] Inferred PNG type from URL`);
+          } else if (attachment.url?.includes('.jpg') || attachment.url?.includes('.jpeg')) {
+            inferredContentType = 'image/jpeg';
+            console.log(`[Attachment Fix] Inferred JPEG type from URL`);
+          } else if (attachment.url?.includes('.pdf')) {
+            inferredContentType = 'application/pdf';
+            console.log(`[Attachment Fix] Inferred PDF type from URL`);
+          } else if (attachment.url?.includes('.docx')) {
+            inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            console.log(`[Attachment Fix] Inferred DOCX type from URL`);
+          } else {
+            // Only default to octet-stream if no specific extension matches
+            inferredContentType = 'application/octet-stream';
+            console.log(`[Attachment Fix] Could not infer specific type from filename, defaulting to octet-stream`);
+          }
+          
+          // Add a check if filename was empty
+          if (!filename) {
+            console.warn(`[Attachment Fix] Attachment name was missing, could not infer type from extension.`);
+            // Try to extract extension from URL as last resort
+            if (attachment.url) {
+              const urlParts = attachment.url.split('.');
+              const possibleExt = urlParts.length > 1 ? urlParts[urlParts.length - 1].toLowerCase() : '';
+              console.log(`[Attachment Fix] Attempting to extract extension from URL: ${possibleExt}`);
+              // Only update if we found a valid extension and didn't already set a specific type
+              if (possibleExt && inferredContentType === 'application/octet-stream') {
+                if (possibleExt === 'pdf') inferredContentType = 'application/pdf';
+                else if (possibleExt === 'docx') inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                else if (possibleExt === 'xlsx') inferredContentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+                console.log(`[Attachment Fix] Updated content type from URL extension: ${inferredContentType}`);
+              }
+            }
+          }
+        } else {
+          console.log(`[Attachment Fix] Keeping existing non-generic contentType: ${inferredContentType}`);
         }
         
-        console.log(`[Attachment Fix] Final result: Name='${filename || 'N/A'}', Original='${attachment.contentType || ''}', Final='${inferredContentType}'`);
+        console.log(`[Attachment Fix] Final result after fallback: Name='${filename || 'N/A'}', Original='${attachment.contentType || ''}', Final='${inferredContentType}'`);
         return { ...attachment, contentType: inferredContentType };
       }));
       
@@ -207,15 +276,21 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
         let inferredContentType = attachment.contentType || '';
         
         if (!inferredContentType || inferredContentType === 'application/octet-stream') {
+          console.log(`[Attachment Fix] Emergency fallback inference for: ${filename}`);
           if (filename.endsWith('.pdf')) inferredContentType = 'application/pdf';
           else if (filename.endsWith('.txt')) inferredContentType = 'text/plain';
           else if (filename.endsWith('.docx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          else if (filename.endsWith('.xlsx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          else if (filename.endsWith('.csv')) inferredContentType = 'text/csv';
+          else if (filename.endsWith('.md')) inferredContentType = 'text/markdown';
           else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) inferredContentType = 'image/jpeg';
           else if (filename.endsWith('.png')) inferredContentType = 'image/png';
+          else if (attachment.url?.includes('.docx')) inferredContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          else if (attachment.url?.includes('.pdf')) inferredContentType = 'application/pdf';
           else inferredContentType = 'application/octet-stream';
         }
         
-        console.log(`[Attachment Fix] Emergency fallback: Name='${filename || 'N/A'}', OriginalType='${attachment.contentType || ''}', FinalType='${inferredContentType}'`);
+        console.log(`[Attachment Fix] Emergency fallback result: Name='${filename || 'N/A'}', OriginalType='${attachment.contentType || ''}', FinalType='${inferredContentType}'`);
         return { ...attachment, contentType: inferredContentType };
       });
       return { ...message, experimental_attachments: fixedAttachments };
