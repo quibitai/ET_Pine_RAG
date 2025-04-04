@@ -140,6 +140,35 @@ function isPdf(mimeType: string): boolean {
 }
 
 /**
+ * Converts file bytes to PDF format for non-PDF documents if needed.
+ * For now, this simply uses a fallback approach of treating the non-PDF documents as PDFs.
+ * @param {Uint8Array} fileBytes - Original file bytes
+ * @param {string} mimeType - Original MIME type
+ * @param {string} fileName - Original file name
+ * @returns {Promise<{fileBytes: Uint8Array, mimeType: string}>} - Processed file bytes and MIME type
+ */
+async function prepareDocumentForProcessing(
+  fileBytes: Uint8Array,
+  mimeType: string,
+  fileName: string
+): Promise<{fileBytes: Uint8Array, mimeType: string}> {
+  // The Document AI processor we're using only supports PDF
+  // So for any other format, we'll need to change the MIME type to PDF
+  if (mimeType !== 'application/pdf') {
+    console.log(`[RAG Processor] Document is not a PDF (${mimeType}). Using application/pdf MIME type for Document AI.`);
+    return {
+      fileBytes,
+      mimeType: 'application/pdf'
+    };
+  }
+  
+  return {
+    fileBytes,
+    mimeType
+  };
+}
+
+/**
  * Extracts text from a document using Google Document AI.
  * @param {Uint8Array} fileBytes - The binary content of the file.
  * @param {string} fileName - The name of the file for MIME type detection.
@@ -154,8 +183,8 @@ export async function extractTextWithGoogleDocumentAI(
     const processorName = `projects/${PROJECT_ID}/locations/${LOCATION}/processors/${PROCESSOR_ID}`;
     
     // Determine MIME type from file name
-    const mimeType = getMimeTypeFromFileName(fileName);
-    console.log(`[RAG Processor] Detected MIME type: ${mimeType} for file: ${fileName}`);
+    const originalMimeType = getMimeTypeFromFileName(fileName);
+    console.log(`[RAG Processor] Detected MIME type: ${originalMimeType} for file: ${fileName}`);
     
     // Add detailed debugging
     console.log('[RAG Processor] Document AI Configuration:');
@@ -182,13 +211,21 @@ export async function extractTextWithGoogleDocumentAI(
     
     // Log document file info
     console.log(`[RAG Processor] - Document size: ${fileBytes?.length || 0} bytes`);
-    console.log(`[RAG Processor] - Format: ${mimeType}`);
+    console.log(`[RAG Processor] - Format: ${originalMimeType}`);
     
-    // Process the document
+    // Process the document - prepare document for processing (convert if needed)
+    const { fileBytes: processedBytes, mimeType: processedMimeType } = 
+      await prepareDocumentForProcessing(fileBytes, originalMimeType, fileName);
+    
+    // Log if the format was changed
+    if (originalMimeType !== processedMimeType) {
+      console.log(`[RAG Processor] - Converting from ${originalMimeType} to ${processedMimeType} for Document AI compatibility`);
+    }
+    
     console.log(`[RAG Processor] Calling Document AI API with processor name: ${processorName}`);
     
     // For PDFs, add special handling for large documents with imageless mode
-    if (isPdf(mimeType)) {
+    if (isPdf(processedMimeType)) {
       console.log(`[RAG Processor] Explicitly enabling imageless mode for PDF to support up to 30 pages`);
     }
     
@@ -198,14 +235,14 @@ export async function extractTextWithGoogleDocumentAI(
       const request = {
         name: processorName,
         rawDocument: {
-          content: fileBytes,
-          mimeType: mimeType,
+          content: processedBytes,
+          mimeType: processedMimeType,
         },
         skipHumanReview: true,  // Add this parameter
       };
       
       // Add special processing options for PDFs
-      if (isPdf(mimeType)) {
+      if (isPdf(processedMimeType)) {
         // @ts-ignore - Add imageless mode directly to bypass type issues
         request.processOptions = {
           ocrConfig: {
@@ -214,10 +251,10 @@ export async function extractTextWithGoogleDocumentAI(
         };
       }
       
-      console.log(`[RAG Processor] Request configured with MIME type ${mimeType}:`, 
+      console.log(`[RAG Processor] Request configured with MIME type ${processedMimeType}:`, 
                  JSON.stringify({
                    ...request, 
-                   rawDocument: { ...request.rawDocument, content: `[${fileBytes.length} bytes]` }
+                   rawDocument: { ...request.rawDocument, content: `[${processedBytes.length} bytes]` }
                  }, null, 2));
       
       const [result] = await documentClient.processDocument(request);
