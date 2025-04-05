@@ -17,6 +17,7 @@
     "db:check": "drizzle-kit check",
     "db:up": "drizzle-kit up",
     "setup:blob": "node scripts/setup-blob-store.js",
+    "cleanup:kb": "npx tsx scripts/cleanup.ts",
     "test": "export PLAYWRIGHT=True && pnpm exec playwright test --workers=4"
   },
   "dependencies": {
@@ -32,7 +33,7 @@
     "@codemirror/view": "^6.35.3",
     "@google-cloud/documentai": "^9.1.0",
     "@google/generative-ai": "^0.2.1",
-    "@pinecone-database/pinecone": "^2.2.2",
+    "@pinecone-database/pinecone": "^5.1.1",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-dropdown-menu": "^2.1.2",
