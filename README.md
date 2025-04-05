@@ -1,26 +1,29 @@
 # ET Pine RAG - Advanced Next.js RAG Chatbot
 
-A Retrieval Augmented Generation (RAG) powered chatbot built with Next.js, Google AI SDK, Pinecone, and Vercel Blob storage.
+A Retrieval Augmented Generation (RAG) powered chatbot built with Next.js, OpenAI, Pinecone, and Vercel Blob storage.
 
-## Latest Release - v1.5.0
+## Latest Release - v1.8.1
 
-* Enhanced chat API to intelligently handle generic queries after file uploads
-* Improved DOCX file handling by checking file extension in addition to MIME type
-* Extended file upload support for all document formats
-* Fixed user authentication by restoring password field in User schema
-* Corrected RAG worker import path for generateEmbeddings
-* Updated file upload dialog to show all supported file formats
+* Added automatic fallback to imageless mode for PDFs exceeding 15 pages
+* Introduced EchoTango Bit assistant persona using GPT-4o Mini model
+* Improved error handling in Document AI processing
+* Added support for image files (JPEG, PNG, TIFF), JSON files, and Google Slides
+* Enhanced error handling in RAG worker to prevent files from getting stuck
+* Added timeout handling for Document AI extraction process
+* Made sidebar open by default for better UX
+* Added back button in Knowledge Base for easier navigation
+* Made chat history sections collapsible for better organization
 
 [View all releases](https://github.com/quibitai/ET_Pine_RAG/releases)
 
 ## Features
 
-- **Document upload and processing** for PDF, DOCX, TXT, CSV, XLSX, and Markdown files
-- **Intelligent document handling** with automatic format detection
+- **Document upload and processing** for PDF, DOCX, TXT, CSV, XLSX, JSON, image files, Google Slides, and Markdown files
+- **Intelligent document handling** with automatic format detection and fallback modes
 - **Smart conversation context** that understands when queries refer to uploaded documents
 - **Vector storage with Pinecone** for semantic search
 - **LLM-powered chat** with document context retrieval and source attribution
-- **Multiple AI models** including Google Gemini and OpenAI
+- **Multiple AI personas** using OpenAI models
 - **Real-time web search** with Tavily integration
 - **Authentication** with Next Auth
 - **File storage** with Vercel Blob
@@ -31,7 +34,6 @@ A Retrieval Augmented Generation (RAG) powered chatbot built with Next.js, Googl
 
 - **Next.js 15** with App Router
 - **TypeScript** for type safety
-- **Google AI SDK** for Gemini models
 - **OpenAI SDK** for GPT models
 - **Google Document AI** for document text extraction
 - **Pinecone Vector Database** for semantic search
@@ -182,3 +184,6 @@ Document processing is handled in the background:
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Deployment
+Last deployment: June 21, 2024
