@@ -2,6 +2,17 @@
 
 All notable changes to the ET Pine RAG project will be documented in this file.
 
+## [1.8.0] - 2024-06-21
+
+### Added
+- New "EchoTango Bit" assistant persona using GPT-4o Mini model
+- Custom system prompt for the EchoTango Bit persona focused on brand voice and storytelling
+
+### Changed
+- Replaced Gemini 2.5 Pro Exp model with EchoTango Bit
+- Updated all model-related infrastructure to support multiple personas with the same base model
+- Standardized on OpenAI models for all AI functions
+
 ## [1.7.0] - 2024-06-20
 
 ### Added
