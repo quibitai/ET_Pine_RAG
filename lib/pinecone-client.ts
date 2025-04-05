@@ -199,11 +199,9 @@ async function testPineconeConnection(client: Pinecone, indexName: string): Prom
 console.log('Initializing Pinecone client with API key...');
 let pineconeInstance: Pinecone;
 try {
-  // Initialize with apiKey and optional server configuration in v5.x
+  // Initialize with apiKey using the latest Pinecone SDK format
   pineconeInstance = new Pinecone({
     apiKey: API_KEY,
-    // In v5.x, you can optionally include server configuration
-    ...(INDEX_HOST ? { serverlessHost: INDEX_HOST } : {})
   });
   
   // Test connection right after initialization
