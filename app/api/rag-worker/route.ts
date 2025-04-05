@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { processFileForRag, generateEmbeddings } from '@/lib/rag-processor';
+import { processFileForRag } from '@/lib/rag-processor';
+import { generateEmbeddings } from '@/lib/ai/utils';
 import { Receiver } from "@upstash/qstash";
 import { getDocumentById, incrementProcessedChunks, updateFileRagStatus } from '@/lib/db/queries';
 import { Client as QStashClient } from '@upstash/qstash';

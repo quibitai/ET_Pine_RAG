@@ -16,6 +16,7 @@ import {
 export const user = pgTable('User', {
   id: uuid('id').primaryKey().notNull(),
   email: text('email').notNull(),
+  password: varchar('password', { length: 64 }),
   name: text('name'),
 });
 
