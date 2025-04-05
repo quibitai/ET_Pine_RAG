@@ -2,6 +2,28 @@
 
 All notable changes to the ET Pine RAG project will be documented in this file.
 
+## [1.7.0] - 2024-06-20
+
+### Added
+- Support for image files (JPEG, PNG, TIFF) in the RAG processing pipeline
+- JSON file support with specialized processing for structured data
+- Google Slides support with appropriate metadata handling
+- Batch deletion functionality for documents in Knowledge Base
+- Document details modal with comprehensive file information
+- Collapsible chat history sections for better organization
+
+### Improved
+- Enhanced error handling in RAG worker to prevent files from getting stuck
+- Added timeout handling for Document AI extraction process
+- Improved handling of application/octet-stream files with known extensions
+- Made sidebar open by default for better UX
+- Back button in Knowledge Base for easier navigation
+
+### Fixed
+- Icon implementation in sidebar components
+- Proper metadata extraction for various file types
+- Sidebar history section to properly refresh with navigation changes
+
 ## [1.1.0] - 2024-06-12
 
 ### Fixed
