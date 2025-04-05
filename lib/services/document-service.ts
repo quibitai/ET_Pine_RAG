@@ -49,78 +49,68 @@ export type DocumentWithProgress = {
 /**
  * Delete embeddings from Pinecone for given document IDs
  * @param documentIds - Array of document IDs to delete
+ * @returns boolean - True if deletion succeeded for ALL provided documents, false otherwise.
  */
-export async function pineconeDeleteEmbeddings(documentIds: string[]) {
-  try {
-    if (!process.env.PINECONE_INDEX_NAME) {
-      throw new Error('PINECONE_INDEX_NAME is not defined');
-    }
-    
-    if (!documentIds.length) {
-      console.warn('[Deletion] No document IDs provided for deletion');
-      return false;
-    }
-    
-    console.log(`[Deletion] Starting embeddings deletion process for documents: ${documentIds.join(', ')}`);
-    
-    // Process each document individually
-    for (const documentId of documentIds) {
-      try {
-        // 1. Get the document metadata to retrieve totalChunks
-        const document = await getDocumentById({ id: documentId });
-        
-        if (!document) {
-          console.warn(`[Deletion] Document ${documentId} not found for Pinecone deletion`);
-          continue;
-        }
-        
-        const totalChunks = document.totalChunks;
-        
-        // 2. Generate vector IDs based on totalChunks
-        let vectorIdsToDelete: string[] = [];
-        if (totalChunks && totalChunks > 0) {
-          vectorIdsToDelete = Array.from({ length: totalChunks }, (_, i) => `${documentId}_chunk_${i}`);
-          console.log(`[Deletion] Generated ${vectorIdsToDelete.length} vector IDs to delete for document ${documentId}`);
-        } else {
-          // Log a warning if chunk count is missing or zero
-          console.warn(`[Deletion] Document ${documentId} has totalChunks=${totalChunks}. Cannot determine vector IDs, skipping deletion.`);
-          continue;
-        }
-        
-        // 3. Delete vectors by ID using correct SDK method and batching
-        if (vectorIdsToDelete.length > 0) {
-          try {
-            const index = pineconeClient.index(process.env.PINECONE_INDEX_NAME);
-            console.log(`[Deletion] Attempting to delete ${vectorIdsToDelete.length} vectors by ID from Pinecone...`);
-            
-            // Use batching to handle large numbers of vectors
-            const BATCH_SIZE = 1000; // Pinecone's typical limit, adjust if needed
-            for (let i = 0; i < vectorIdsToDelete.length; i += BATCH_SIZE) {
-              const batchIds = vectorIdsToDelete.slice(i, i + BATCH_SIZE);
-              if (batchIds.length > 0) {
-                console.log(`[Deletion] Deleting batch of ${batchIds.length} vector IDs (starting index ${i})...`);
-                // Use the appropriate delete method based on Pinecone SDK
-                await (index as any).delete({ ids: batchIds });
-              }
-            }
-            console.log(`[Deletion] Completed deleting vectors by ID in batches for document ${documentId}`);
-          } catch (pineconeError) {
-            console.error(`[Deletion] Error deleting vectors by ID from Pinecone for document ${documentId}:`, pineconeError);
-            throw new Error(`Pinecone vector deletion failed for document ${documentId}: ${pineconeError instanceof Error ? pineconeError.message : String(pineconeError)}`);
-          }
-        }
-      } catch (docError) {
-        console.error(`[Deletion] Error processing document ${documentId} for deletion:`, docError);
-      }
-    }
-    
-    console.log(`[Deletion] Embeddings deletion process completed for documents: ${documentIds.join(', ')}`);
-    return true;
-  } catch (error) {
-    console.error(`[Deletion] Failed to delete embeddings: ${error}`);
-    // Re-throw to allow the calling function to handle the error
-    throw error;
+export async function pineconeDeleteEmbeddings(documentIds: string[]): Promise<boolean> {
+  let overallSuccess = true; // Assume success initially
+
+  if (!process.env.PINECONE_INDEX_NAME) {
+    console.error('[Deletion] PINECONE_INDEX_NAME is not defined');
+    return false; // Cannot proceed without index name
   }
+  const indexName = process.env.PINECONE_INDEX_NAME;
+
+  if (!documentIds || documentIds.length === 0) {
+    console.warn('[Deletion] No document IDs provided for Pinecone deletion.');
+    return true; // Nothing to delete, so technically successful
+  }
+
+  console.log(`[Deletion] Starting Pinecone embeddings deletion for documents: ${documentIds.join(', ')}`);
+
+  // Get the index instance once
+  const index = pineconeClient.index(indexName);
+
+  // **Crucial Check:** Verify the index object exists
+  if (!index) {
+     console.error(`[Deletion] FATAL: Pinecone index object for '${indexName}' is invalid.`);
+     return false; // Cannot proceed if the index object is wrong
+  }
+
+  for (const documentId of documentIds) {
+    try {
+      console.log(`[Deletion] Deleting vectors for document ${documentId} using filter...`);
+      
+      // Use deleteAll method without arguments, or try namespace filtering
+      // Based on Pinecone SDK v2.2.2 documentation
+      try {
+        // Try first with metadata filtering if supported
+        await index.deleteMany({
+          filter: {
+            documentId: { $eq: documentId }
+          }
+        });
+        console.log(`[Deletion] Successfully deleted vectors for document ${documentId} using metadata filter`);
+      } catch (filterError) {
+        console.warn(`[Deletion] Metadata filter deletion failed: ${filterError}. Trying namespace approach...`);
+        
+        // Try namespace-based deletion as fallback
+        // This assumes vectors were stored in a namespace named after the documentId
+        try {
+          await index.namespace(documentId).deleteAll();
+          console.log(`[Deletion] Successfully deleted vectors for document ${documentId} using namespace deletion`);
+        } catch (namespaceError) {
+          console.error(`[Deletion] Namespace deletion also failed: ${namespaceError}`);
+          throw new Error(`Could not delete vectors for document ${documentId}: ${namespaceError}`);
+        }
+      }
+    } catch (error) {
+      console.error(`[Deletion] Failed to delete vectors for document ${documentId}:`, error);
+      overallSuccess = false;
+    }
+  }
+
+  console.log(`[Deletion] Pinecone embeddings deletion finished. Overall success status: ${overallSuccess}`);
+  return overallSuccess;
 }
 
 /**
@@ -181,12 +171,13 @@ export async function deleteDocument(id: string, userId: string) {
     let pineconeSuccess = false;
     try {
       console.log(`Attempting to delete embeddings for document ${id} from Pinecone`);
-      await pineconeDeleteEmbeddings([id]);
-      pineconeSuccess = true;
-      console.log(`Successfully deleted embeddings for document ${id} from Pinecone`);
-    } catch (error) {
-      console.error(`Error deleting embeddings for document ${id} from Pinecone:`, error);
-      // Continue with deletion even if Pinecone deletion fails
+      pineconeSuccess = await pineconeDeleteEmbeddings([id]);
+      if (!pineconeSuccess) {
+        console.warn(`[API/Service] Pinecone deletion failed or partially failed for document ${id}.`);
+      }
+    } catch (pineconeError) {
+      console.error(`[API/Service] Critical error calling pineconeDeleteEmbeddings for document ${id}:`, pineconeError);
+      pineconeSuccess = false;
     }
     
     // 3. Delete the file from Vercel Blob storage if URL exists
@@ -207,15 +198,21 @@ export async function deleteDocument(id: string, userId: string) {
     
     // 4. Delete the document record from the database
     console.log(`Deleting document ${id} from database`);
-    await db.delete(documents).where(and(
-      eq(documents.id, id),
-      eq(documents.userId, userId)
-    ));
-    console.log(`Successfully deleted document ${id} from database`);
+    let dbSuccess = false;
+    try {
+      await db.delete(documents).where(and(
+        eq(documents.id, id),
+        eq(documents.userId, userId)
+      ));
+      dbSuccess = true;
+      console.log(`Successfully deleted document ${id} from database`);
+    } catch (dbError) {
+      console.error(`Error deleting document ${id} from database:`, dbError);
+    }
     
-    // 5. Log deletion summary
+    // 5. Log deletion summary with accurate status
     console.log(`Document deletion summary for ${id}:
-      - Database deletion: Success
+      - Database deletion: ${dbSuccess ? 'Success' : 'Failed'}
       - Pinecone embeddings deletion: ${pineconeSuccess ? 'Success' : 'Failed'}
       - Blob storage deletion: ${document.blobUrl ? (blobSuccess ? 'Success' : 'Failed') : 'N/A'}
     `);
