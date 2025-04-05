@@ -28,6 +28,11 @@ export function AppSidebar({ user }: { user: User | undefined }) {
     router.refresh();
   };
 
+  const handleNavigateToKnowledgeBase = () => {
+    setOpenMobile(false);
+    window.location.href = '/knowledge-base';
+  };
+
   return (
     <Sidebar className="group-data-[side=left]:border-r-0">
       <SidebarHeader>
@@ -45,21 +50,18 @@ export function AppSidebar({ user }: { user: User | undefined }) {
               </span>
             </Link>
             <div className="flex">
-              <Link href="/knowledge-base" legacyBehavior passHref>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      as="a"
-                      variant="ghost"
-                      className="p-2 h-fit"
-                      onClick={() => setOpenMobile(false)}
-                    >
-                      <FileTextIcon />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent align="end">Knowledge Base</TooltipContent>
-                </Tooltip>
-              </Link>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="p-2 h-fit"
+                    onClick={handleNavigateToKnowledgeBase}
+                  >
+                    <FileTextIcon />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent align="end">Knowledge Base</TooltipContent>
+              </Tooltip>
               
               <Tooltip>
                 <TooltipTrigger asChild>
