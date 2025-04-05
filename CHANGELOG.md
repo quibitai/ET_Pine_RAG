@@ -2,6 +2,12 @@
 
 All notable changes to the ET Pine RAG project will be documented in this file.
 
+## [1.8.1] - 2024-06-21
+
+### Fixed
+- Added automatic fallback to imageless mode for PDFs exceeding 15 pages
+- Improved error handling in Document AI processing
+
 ## [1.8.0] - 2024-06-21
 
 ### Added
