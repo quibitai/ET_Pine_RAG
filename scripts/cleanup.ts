@@ -43,9 +43,50 @@ if (!process.env.POSTGRES_URL) {
   throw new Error('POSTGRES_URL environment variable is required');
 }
 
-// Initialize database client
-const client = postgres(process.env.POSTGRES_URL);
-const db = drizzle(client);
+// Validate database URL format
+const validateDatabaseURL = (url: string): boolean => {
+  // Basic format validation - should start with postgres:// or postgresql://
+  if (!url.startsWith('postgres://') && !url.startsWith('postgresql://')) {
+    console.error(`❌ Invalid database URL format: ${url}`);
+    console.error('Database URL should start with postgres:// or postgresql://');
+    return false;
+  }
+  
+  // Check if it's using localhost (which might not be running)
+  if (url.includes('localhost') || url.includes('127.0.0.1') || url.includes('::1')) {
+    console.warn(`⚠️ WARNING: Your database URL (${url}) is pointing to localhost.`);
+    console.warn('Make sure your PostgreSQL server is running on your local machine.');
+    console.warn('If you\'re trying to connect to a remote database (like Neon):');
+    console.warn('1. Check your .env.local file');
+    console.warn('2. Ensure POSTGRES_URL points to your remote database');
+    console.warn('3. For Neon, the URL should look like: postgres://user:password@endpoint.region.neon.tech/database');
+  }
+  
+  return true;
+};
+
+// Basic validation of the database URL
+if (!validateDatabaseURL(process.env.POSTGRES_URL)) {
+  throw new Error('Invalid POSTGRES_URL format');
+}
+
+// Initialize database client with better error handling
+let client: ReturnType<typeof postgres>;
+let db: ReturnType<typeof drizzle>;
+
+try {
+  console.log('Initializing database connection...');
+  // Configure postgres with a timeout to avoid hanging
+  client = postgres(process.env.POSTGRES_URL, {
+    idle_timeout: 20,
+    connect_timeout: 10,
+    max_lifetime: 60 * 30 // 30 minutes
+  });
+  db = drizzle(client);
+} catch (error) {
+  console.error('❌ Failed to initialize database connection:', error);
+  throw new Error('Database connection initialization failed');
+}
 
 // Check if Pinecone is properly configured
 const isPineconeConfigured = () => {
@@ -71,6 +112,28 @@ async function cleanupKnowledgeBase() {
   console.log('----------------------------------------');
 
   try {
+    // First, test the database connection
+    try {
+      console.log('Testing database connection...');
+      // Simple query to test connection - using sql template string syntax
+      await client`SELECT 1`;
+      console.log('✅ Database connection successful');
+    } catch (error) {
+      console.error('❌ Database connection test failed:', error);
+      console.error('\nTROUBLESHOOTING DATABASE CONNECTION:');
+      console.error('1. Check if your PostgreSQL server is running');
+      console.error('2. Verify your POSTGRES_URL in .env.local is correct');
+      console.error('3. If using Neon or another cloud provider, check if:');
+      console.error('   - Your IP address is allowlisted');
+      console.error('   - Your database credentials are valid');
+      console.error('   - The database exists and is active');
+      console.error('\nFor Neon specifically:');
+      console.error('1. Go to https://console.neon.tech');
+      console.error('2. Find your project and database');
+      console.error('3. Get the connection string and update your .env.local file');
+      throw new Error('Database connection failed');
+    }
+
     // Step 1: Fetch all documents from the database
     console.log('📑 Fetching all documents from database...');
     const allDocuments = await db.select().from(documents);
@@ -186,8 +249,12 @@ async function cleanupKnowledgeBase() {
     throw error;
   } finally {
     // Close the database connection
-    await client.end();
-    console.log('Database connection closed.');
+    try {
+      await client.end();
+      console.log('Database connection closed.');
+    } catch (err) {
+      console.error('Error closing database connection:', err);
+    }
   }
 }
 
