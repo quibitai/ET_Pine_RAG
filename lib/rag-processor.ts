@@ -122,6 +122,17 @@ function getMimeTypeFromFileName(fileName: string): string {
     // Presentation formats
     'ppt': 'application/vnd.ms-powerpoint',
     'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'gslides': 'application/vnd.google-apps.presentation',
+    
+    // Image formats
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'tiff': 'image/tiff',
+    'tif': 'image/tiff',
+    
+    // Data formats
+    'json': 'application/json',
     
     // Default to PDF if unknown
     '': 'application/pdf'
@@ -245,7 +256,26 @@ export async function extractTextWithGoogleDocumentAI(
                    rawDocument: { ...request.rawDocument, content: `[${processedBytes.length} bytes]` }
                  }, null, 2));
       
-      const [result] = await documentClient.processDocument(request);
+      // Add timeout for the Document AI API call to prevent hanging
+      const documentAiTimeout = 60000; // 60 seconds timeout
+      const documentAiPromise = new Promise(async (resolve, reject) => {
+        try {
+          const [result] = await documentClient.processDocument(request);
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+
+      // Create a timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Document AI processing timed out after ${documentAiTimeout/1000} seconds`));
+        }, documentAiTimeout);
+      });
+
+      // Race the Document AI promise against the timeout
+      const result = await Promise.race([documentAiPromise, timeoutPromise]) as any;
       
       const document = result.document;
       if (!document || !document.text) {
@@ -510,6 +540,82 @@ export async function processFileForRag({
       } catch (xlsxError) {
         console.error('[RAG Processor] Error extracting XLSX:', xlsxError);
         throw new Error(`Failed to extract text from XLSX: ${xlsxError instanceof Error ? xlsxError.message : String(xlsxError)}`);
+      }
+    } else if (mimeType === 'application/json' || effectiveFileExtension === 'json') {
+      console.log('[RAG Processor] Processing JSON file...');
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'processing', 
+        statusMessage: 'Extracting content from JSON' 
+      });
+      try {
+        const jsonString = nodeBuffer.toString('utf-8');
+        // Parse the JSON to ensure it's valid
+        let jsonData;
+        try {
+          jsonData = JSON.parse(jsonString);
+        } catch (parseError) {
+          console.error('[RAG Processor] Failed to parse JSON:', parseError);
+          throw new Error(`Invalid JSON format: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+        }
+        
+        // Convert JSON to a readable text format
+        const formatJsonForRag = (obj: any, path: string = ''): string => {
+          let result = '';
+          if (Array.isArray(obj)) {
+            // Handle arrays
+            obj.forEach((item, index) => {
+              const currentPath = path ? `${path}[${index}]` : `[${index}]`;
+              if (typeof item === 'object' && item !== null) {
+                result += formatJsonForRag(item, currentPath);
+              } else {
+                result += `${currentPath}: ${JSON.stringify(item)}\n`;
+              }
+            });
+          } else if (typeof obj === 'object' && obj !== null) {
+            // Handle objects
+            Object.entries(obj).forEach(([key, value]) => {
+              const currentPath = path ? `${path}.${key}` : key;
+              if (typeof value === 'object' && value !== null) {
+                result += formatJsonForRag(value, currentPath);
+              } else {
+                result += `${currentPath}: ${JSON.stringify(value)}\n`;
+              }
+            });
+          }
+          return result;
+        };
+        
+        extractedText = formatJsonForRag(jsonData);
+        
+        // If the extracted text is very short, add the raw JSON as well
+        if (extractedText.length < 100) {
+          extractedText += '\n\nRaw JSON:\n' + jsonString;
+        }
+      } catch (jsonError) {
+        console.error('[RAG Processor] Error processing JSON:', jsonError);
+        throw new Error(`Failed to process JSON: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`);
+      }
+    } else if (mimeType.startsWith('image/') || 
+              ['jpg', 'jpeg', 'png', 'tiff', 'tif'].includes(effectiveFileExtension)) {
+      console.log('[RAG Processor] Processing image file with OCR via Document AI...');
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'processing', 
+        statusMessage: 'Extracting text from image with OCR' 
+      });
+      try {
+        // For images, we'll use Document AI directly since it has built-in OCR capabilities
+        extractedText = await extractTextWithGoogleDocumentAI(fileBytes, docDetails.fileName);
+        
+        // If no text was extracted, provide a message about it being an image
+        if (!extractedText || extractedText.trim().length === 0) {
+          extractedText = `This is an image file: ${docDetails.fileName}. No extractable text was found in the image.`;
+        }
+      } catch (imageError) {
+        console.error('[RAG Processor] Error extracting text from image:', imageError);
+        // Even if OCR fails, provide basic metadata about the image
+        extractedText = `This is an image file: ${docDetails.fileName}. Size: ${docDetails.fileSize} bytes. File type: ${docDetails.fileType}.`;
       }
     } else {
       // Fallback - try Document AI as a last resort

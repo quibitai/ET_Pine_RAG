@@ -262,6 +262,19 @@ export async function POST(req: Request) {
         }, { status: 200 });
       } catch (error) {
         console.error(`[RAG Worker] Error initiating document processing:`, error);
+        
+        // Make sure to update the document status to failed
+        try {
+          await updateFileRagStatus({
+            id: body.documentId,
+            processingStatus: 'failed',
+            statusMessage: `Processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          });
+          console.log(`[RAG Worker] Updated document ${body.documentId} status to 'failed'`);
+        } catch (statusUpdateError) {
+          console.error(`[RAG Worker] Failed to update document status after error:`, statusUpdateError);
+        }
+        
         return NextResponse.json({
           error: `Failed to initiate document processing: ${error instanceof Error ? error.message : 'Unknown error'}`
         }, { status: 500 });

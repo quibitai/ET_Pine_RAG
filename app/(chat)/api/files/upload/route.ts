@@ -25,7 +25,16 @@ const documentTypes = [
   'text/plain',
   'text/markdown',
   'text/csv',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  // Add support for image formats
+  'image/jpeg',
+  'image/jpg',
+  'image/tiff',
+  'image/png',
+  // Add support for JSON files
+  'application/json',
+  // Add support for Google formats
+  'application/vnd.google-apps.presentation'
 ];
 
 // Document kind for database
@@ -129,7 +138,14 @@ export async function POST(request: Request): Promise<NextResponse> {
                                   fileExtension === 'txt' || 
                                   fileExtension === 'md' || 
                                   fileExtension === 'csv' || 
-                                  fileExtension === 'xlsx';
+                                  fileExtension === 'xlsx' ||
+                                  // Add support for additional file extensions
+                                  fileExtension === 'json' ||
+                                  fileExtension === 'jpg' ||
+                                  fileExtension === 'jpeg' ||
+                                  fileExtension === 'tiff' ||
+                                  fileExtension === 'png' ||
+                                  fileExtension === 'gslides';
     
     // If document type is supported, enqueue RAG processing
     if (isSupportedByMimeType || isSupportedByExtension) {
