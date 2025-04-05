@@ -11,6 +11,7 @@ import {
   FileIcon,
   FileTextIcon,
   ImageIcon,
+  InfoIcon,
   Loader2Icon,
   PencilIcon,
   RefreshCwIcon,
@@ -46,9 +47,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { fetcher } from '@/lib/utils';
+import { fetcher, formatFileSize } from '@/lib/utils';
 import { FolderUploadButton } from '@/components/folder-upload-button';
+import { DocumentDetailsModal } from '@/components/document-details-modal';
 
 // Types for document
 type Document = {
@@ -57,23 +60,15 @@ type Document = {
   fileType: string;
   fileSize: number;
   processingStatus: 'pending' | 'processing' | 'completed' | 'failed';
-  statusMessage?: string | null;
+  statusMessage?: string;
   createdAt: Date;
   updatedAt: Date;
   blobUrl: string;
-  totalChunks?: number | null;
-  processedChunks?: number | null;
-  folderPath?: string | null;
+  totalChunks?: number;
+  processedChunks?: number;
+  folderPath?: string;
+  title?: string;
 };
-
-// Helper function to format file size
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
 
 // Helper function to get file icon
 function getFileIcon(fileType: string) {
@@ -110,6 +105,14 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState<string | null>(null);
+  
+  // Add state for selected documents
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
+  const [selectMode, setSelectMode] = useState(false);
+  
+  // Add state for document details modal
+  const [detailsDocument, setDetailsDocument] = useState<Document | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   
   // Fetch all documents for the user
   const { data, error, isLoading, mutate } = useSWR<{ documents: Document[] }>('/api/documents', fetcher);
@@ -254,6 +257,79 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
     fileInput.click();
   };
   
+  // Handle batch document deletion
+  const handleBatchDelete = async () => {
+    if (selectedDocuments.length === 0) {
+      return;
+    }
+    
+    try {
+      setIsDeleting('batch');
+      
+      const response = await fetch('/api/documents/batch', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ documentIds: selectedDocuments }),
+      });
+      
+      const responseData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(responseData.error || 'Failed to delete documents');
+      }
+      
+      if (responseData.results && responseData.results.failed && responseData.results.failed.length > 0) {
+        // Some documents failed to delete
+        toast.warning(`${responseData.results.success.length} documents deleted, ${responseData.results.failed.length} failed`);
+      } else {
+        // All documents deleted successfully
+        toast.success(`${selectedDocuments.length} documents deleted successfully`);
+      }
+      
+      // Clear selection and exit select mode
+      setSelectedDocuments([]);
+      setSelectMode(false);
+      
+      mutate(); // Refresh the document list
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete documents');
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+  
+  // Handle select all documents
+  const handleSelectAll = () => {
+    if (sortedDocuments && sortedDocuments.length > 0) {
+      if (selectedDocuments.length === sortedDocuments.length) {
+        // If all documents are selected, deselect all
+        setSelectedDocuments([]);
+      } else {
+        // Otherwise, select all documents
+        setSelectedDocuments(sortedDocuments.map(doc => doc.id));
+      }
+    }
+  };
+  
+  // Handle individual document selection
+  const handleSelectDocument = (id: string) => {
+    setSelectedDocuments(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(docId => docId !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
+  };
+  
+  // Handle showing document details
+  const handleShowDetails = (document: Document) => {
+    setDetailsDocument(document);
+    setIsDetailsModalOpen(true);
+  };
+  
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -263,14 +339,47 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
           </p>
         </div>
         <div className="flex gap-2">
-          <FolderUploadButton 
-            onUploadComplete={(results) => {
-              mutate(); // Refresh documents after upload completes
-            }}
-          />
-          <Button onClick={handleUpload}>
-            Upload Document
-          </Button>
+          {selectMode ? (
+            <>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setSelectMode(false);
+                  setSelectedDocuments([]);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleBatchDelete}
+                disabled={selectedDocuments.length === 0 || isDeleting !== null}
+              >
+                {isDeleting === 'batch' ? (
+                  <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                ) : null}
+                Delete Selected ({selectedDocuments.length})
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button 
+                variant="outline" 
+                onClick={() => setSelectMode(true)}
+                disabled={!sortedDocuments || sortedDocuments.length === 0}
+              >
+                Select
+              </Button>
+              <FolderUploadButton 
+                onUploadComplete={(results) => {
+                  mutate(); // Refresh documents after upload completes
+                }}
+              />
+              <Button onClick={handleUpload}>
+                Upload Document
+              </Button>
+            </>
+          )}
         </div>
       </div>
       
@@ -278,6 +387,14 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
         <Table>
           <TableHeader>
             <TableRow>
+              {selectMode && (
+                <TableHead className="w-[50px]">
+                  <Checkbox 
+                    checked={sortedDocuments && sortedDocuments.length > 0 && selectedDocuments.length === sortedDocuments.length}
+                    onCheckedChange={handleSelectAll}
+                  />
+                </TableHead>
+              )}
               <TableHead 
                 className="w-[300px] cursor-pointer"
                 onClick={() => toggleSort('fileName')}
@@ -311,19 +428,6 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
               </TableHead>
               <TableHead 
                 className="cursor-pointer"
-                onClick={() => toggleSort('processingStatus')}
-              >
-                <div className="flex items-center">
-                  Status
-                  {sortField === 'processingStatus' && (
-                    sortDirection === 'asc' ? 
-                      <ChevronUpIcon className="ml-1 h-4 w-4" /> : 
-                      <ChevronDownIcon className="ml-1 h-4 w-4" />
-                  )}
-                </div>
-              </TableHead>
-              <TableHead 
-                className="cursor-pointer"
                 onClick={() => toggleSort('createdAt')}
               >
                 <div className="flex items-center">
@@ -335,13 +439,14 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
                   )}
                 </div>
               </TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={selectMode ? 7 : 6} className="h-24 text-center">
                   <div className="flex justify-center items-center h-full">
                     <Loader2Icon className="h-6 w-6 animate-spin mr-2" />
                     <span>Loading documents...</span>
@@ -350,7 +455,15 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
               </TableRow>
             ) : sortedDocuments && sortedDocuments.length > 0 ? (
               sortedDocuments.map((doc) => (
-                <TableRow key={doc.id}>
+                <TableRow key={doc.id} className={selectedDocuments.includes(doc.id) ? 'bg-muted' : ''}>
+                  {selectMode && (
+                    <TableCell>
+                      <Checkbox 
+                        checked={selectedDocuments.includes(doc.id)}
+                        onCheckedChange={() => handleSelectDocument(doc.id)}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium">
                     <div className="flex items-center">
                       {getFileIcon(doc.fileType)}
@@ -367,103 +480,122 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
                     )}
                   </TableCell>
                   <TableCell>{formatFileSize(doc.fileSize)}</TableCell>
+                  <TableCell>{new Date(doc.createdAt).toLocaleDateString()}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      {getStatusBadge(doc.processingStatus)}
-                      {doc.processingStatus === 'processing' && doc.totalChunks && doc.processedChunks !== null && (
-                        <span className="text-xs text-muted-foreground">
-                          {doc.processedChunks}/{doc.totalChunks}
-                        </span>
-                      )}
-                    </div>
-                    {doc.statusMessage && (
-                      <p className="text-xs text-muted-foreground mt-1 truncate max-w-[200px]">
-                        {doc.statusMessage}
-                      </p>
+                    {doc.processingStatus === 'completed' && (
+                      <Badge variant="success" className="bg-green-500">
+                        Completed
+                      </Badge>
+                    )}
+                    {doc.processingStatus === 'processing' && (
+                      <Badge variant="outline" className="border-blue-500 text-blue-500">
+                        <Loader2Icon className="h-3 w-3 mr-1 animate-spin" />
+                        Processing
+                        {doc.processedChunks !== undefined && doc.totalChunks && doc.totalChunks > 0 && (
+                          <span className="ml-1 text-xs">
+                            ({Math.round((doc.processedChunks / doc.totalChunks) * 100)}%)
+                          </span>
+                        )}
+                      </Badge>
+                    )}
+                    {doc.processingStatus === 'pending' && (
+                      <Badge variant="outline" className="border-yellow-500 text-yellow-500">
+                        Pending
+                      </Badge>
+                    )}
+                    {doc.processingStatus === 'failed' && (
+                      <Badge variant="destructive">
+                        Failed
+                      </Badge>
                     )}
                   </TableCell>
-                  <TableCell>
-                    {new Date(doc.createdAt).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </TableCell>
                   <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <PencilIcon className="h-4 w-4" />
-                          <span className="sr-only">Open menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem 
-                          onClick={() => router.push(`/?documentId=${doc.id}`)}
-                          className="cursor-pointer"
-                        >
-                          <SparklesIcon className="h-4 w-4 mr-2" />
-                          <span>Chat with document</span>
-                        </DropdownMenuItem>
-                        
-                        {doc.processingStatus === 'failed' && (
+                    <div className="flex justify-end gap-1">
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => handleShowDetails(doc)}
+                        title="View Details"
+                      >
+                        <InfoIcon className="h-4 w-4" />
+                        <span className="sr-only">View details</span>
+                      </Button>
+                      
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <PencilIcon className="h-4 w-4" />
+                            <span className="sr-only">Open menu</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
                           <DropdownMenuItem 
-                            onClick={() => handleRetry(doc.id)}
+                            onClick={() => router.push(`/?documentId=${doc.id}`)}
                             className="cursor-pointer"
-                            disabled={!!isRetrying}
                           >
-                            {isRetrying === doc.id ? (
-                              <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
-                            ) : (
-                              <RefreshCwIcon className="h-4 w-4 mr-2" />
-                            )}
-                            <span>Retry processing</span>
+                            <SparklesIcon className="h-4 w-4 mr-2" />
+                            <span>Chat with document</span>
                           </DropdownMenuItem>
-                        )}
-                        
-                        <DropdownMenuSeparator />
-                        
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
+                          
+                          {doc.processingStatus === 'failed' && (
                             <DropdownMenuItem 
-                              onSelect={(e) => e.preventDefault()}
-                              className="cursor-pointer text-destructive focus:text-destructive"
+                              onClick={() => handleRetry(doc.id)}
+                              className="cursor-pointer"
+                              disabled={!!isRetrying}
                             >
-                              <Trash2Icon className="h-4 w-4 mr-2" />
-                              <span>Delete document</span>
+                              {isRetrying === doc.id ? (
+                                <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <RefreshCwIcon className="h-4 w-4 mr-2" />
+                              )}
+                              <span>Retry processing</span>
                             </DropdownMenuItem>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will permanently delete the document and all associated data.
-                                This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDelete(doc.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          )}
+                          
+                          <DropdownMenuSeparator />
+                          
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <DropdownMenuItem 
+                                onSelect={(e) => e.preventDefault()}
+                                className="cursor-pointer text-destructive focus:text-destructive"
                               >
-                                {isDeleting === doc.id ? (
-                                  <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
-                                ) : (
-                                  "Delete"
-                                )}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                                <Trash2Icon className="h-4 w-4 mr-2" />
+                                <span>Delete document</span>
+                              </DropdownMenuItem>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently delete the document and all associated data.
+                                  This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDelete(doc.id)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  {isDeleting === doc.id ? (
+                                    <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    "Delete"
+                                  )}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={selectMode ? 7 : 6} className="h-24 text-center">
                   <div className="flex flex-col items-center justify-center h-full">
                     <p className="text-muted-foreground mb-2">No documents found</p>
                     <div className="flex gap-2">
@@ -479,6 +611,28 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
           </TableBody>
         </Table>
       </div>
+      
+      {/* Batch Delete Confirmation Dialog */}
+      <AlertDialog open={selectedDocuments.length > 0 && isDeleting === 'batch'}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deleting Multiple Documents</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deleting {selectedDocuments.length} documents. Please wait...
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex justify-center my-4">
+            <Loader2Icon className="h-8 w-8 animate-spin" />
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+      {/* Document Details Modal */}
+      <DocumentDetailsModal
+        document={detailsDocument}
+        isOpen={isDetailsModalOpen}
+        onClose={() => setIsDetailsModalOpen(false)}
+      />
     </div>
   );
 } 
