@@ -286,6 +286,47 @@ export async function extractTextWithGoogleDocumentAI(
       return document.text;
     } catch (error) {
       console.error('[RAG Processor] Error extracting text with Google Document AI:', error);
+      
+      // Check specifically for the page limit error
+      if (error instanceof Error && 
+          error.message.includes('INVALID_ARGUMENT') && 
+          error.message.includes('Document pages in non-imageless mode exceed the limit')) {
+        
+        console.log('[RAG Processor] Detected page limit error. Retrying with imageless mode forced...');
+        
+        try {
+          // Retry with forced imageless mode
+          const retryRequest = {
+            name: processorName,
+            rawDocument: {
+              content: processedBytes,
+              mimeType: processedMimeType,
+            },
+            skipHumanReview: true,
+            // @ts-ignore - Add imageless mode directly to bypass type issues
+            processOptions: {
+              ocrConfig: {
+                enableImageless: true,
+              },
+            },
+          };
+          
+          console.log('[RAG Processor] Retrying Document AI processing with forced imageless mode');
+          // @ts-ignore - Using any to bypass type checking for the response
+          const [retryResult] = await documentClient.processDocument(retryRequest);
+          
+          if (!retryResult.document || !retryResult.document.text) {
+            throw new Error('No text extracted from document in retry attempt');
+          }
+          
+          console.log(`[RAG Processor] Retry successful, extracted ${retryResult.document.text.length} characters`);
+          return retryResult.document.text;
+        } catch (retryError: any) {
+          console.error('[RAG Processor] Error during imageless mode retry:', retryError);
+          throw new Error(`Failed to process document even with imageless mode: ${retryError.message || 'Unknown error'}`);
+        }
+      }
+      
       if (error instanceof Error && (error.message.includes('Could not load the default credentials') || 
                                    error.message.includes('permission denied') || 
                                    error.message.includes('invalid_grant'))) {
@@ -298,6 +339,7 @@ export async function extractTextWithGoogleDocumentAI(
         console.error('1. The processor ID does not exist in this project');
         console.error('2. The location is incorrect (should be "us" based on your processor)');
         console.error('3. The project ID in environment variable does not match the service account project');
+        console.error('4. Document pages exceed the limit (15 pages in non-imageless mode, 30 pages in imageless mode)');
         console.error(`Current configuration: Project=${PROJECT_ID}, Location=${LOCATION}, ProcessorID=${PROCESSOR_ID}`);
         
         // Suggest the correct format based on screenshots
