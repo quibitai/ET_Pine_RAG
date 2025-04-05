@@ -34,7 +34,9 @@ const documentTypes = [
   // Add support for JSON files
   'application/json',
   // Add support for Google formats
-  'application/vnd.google-apps.presentation'
+  'application/vnd.google-apps.presentation',
+  // Add support for generic binary files - we'll check file extension
+  'application/octet-stream'
 ];
 
 // Document kind for database
@@ -147,9 +149,12 @@ export async function POST(request: Request): Promise<NextResponse> {
                                   fileExtension === 'png' ||
                                   fileExtension === 'gslides';
     
+    // Special handling for octet-stream files - we need to check the extension
+    const isOctetStreamWithSupportedExtension = file.type === 'application/octet-stream' && isSupportedByExtension;
+    
     // If document type is supported, enqueue RAG processing
-    if (isSupportedByMimeType || isSupportedByExtension) {
-      console.log(`[Upload API] Document supported for RAG processing: MIME type check: ${isSupportedByMimeType}, Extension check: ${isSupportedByExtension}`);
+    if (isSupportedByMimeType || isSupportedByExtension || isOctetStreamWithSupportedExtension) {
+      console.log(`[Upload API] Document supported for RAG processing: MIME type check: ${isSupportedByMimeType}, Extension check: ${isSupportedByExtension}, Octet-stream special check: ${isOctetStreamWithSupportedExtension}`);
     
       const rawWorkerUrl = process.env.QSTASH_WORKER_URL;
 

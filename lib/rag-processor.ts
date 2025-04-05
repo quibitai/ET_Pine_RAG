@@ -596,6 +596,63 @@ export async function processFileForRag({
         console.error('[RAG Processor] Error processing JSON:', jsonError);
         throw new Error(`Failed to process JSON: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`);
       }
+    } else if (mimeType === 'application/vnd.google-apps.presentation' || 
+               mimeType === 'application/octet-stream' && effectiveFileExtension === 'gslides') {
+      console.log('[RAG Processor] Processing Google Slides file...');
+      await updateFileRagStatus({ 
+        id: documentId, 
+        processingStatus: 'processing', 
+        statusMessage: 'Processing Google Slides file' 
+      });
+      
+      try {
+        // Google Slides files typically contain a reference to the actual file rather than content
+        // We'll use basic metadata for these files
+        extractedText = `Google Slides document: ${docDetails.fileName}.\n\n`;
+        extractedText += `This appears to be a Google Slides presentation file. `;
+        extractedText += `File size: ${docDetails.fileSize} bytes. `;
+        extractedText += `Note: Google Slides files usually contain references to content hosted on Google's servers.`;
+        
+        // Try to extract any text content from the file if possible
+        try {
+          const fileContent = nodeBuffer.toString('utf-8');
+          
+          // Look for any JSON structure that might contain useful metadata
+          const jsonMatches = fileContent.match(/\{[\s\S]*\}/);
+          if (jsonMatches && jsonMatches[0]) {
+            try {
+              const jsonData = JSON.parse(jsonMatches[0]);
+              
+              // Extract any useful information from the JSON
+              if (jsonData.title) {
+                extractedText += `\n\nPresentation title: ${jsonData.title}`;
+              }
+              
+              if (jsonData.description) {
+                extractedText += `\n\nDescription: ${jsonData.description}`;
+              }
+              
+              // Include any other useful metadata
+              extractedText += `\n\nFull metadata: ${JSON.stringify(jsonData, null, 2)}`;
+            } catch (jsonParseError) {
+              // If JSON parsing fails, just use the raw text
+              if (fileContent.length < 1000) {
+                extractedText += `\n\nRaw file content: ${fileContent}`;
+              }
+            }
+          } else if (fileContent.length < 1000) {
+            // If there's no JSON structure but the file is small, include the raw content
+            extractedText += `\n\nRaw file content: ${fileContent}`;
+          }
+        } catch (contentExtractionError) {
+          console.error('[RAG Processor] Error extracting content from Google Slides file:', contentExtractionError);
+        }
+        
+      } catch (slidesError) {
+        console.error('[RAG Processor] Error processing Google Slides file:', slidesError);
+        // Even if processing fails, provide basic file information
+        extractedText = `Google Slides document: ${docDetails.fileName}. Size: ${docDetails.fileSize} bytes.`;
+      }
     } else if (mimeType.startsWith('image/') || 
               ['jpg', 'jpeg', 'png', 'tiff', 'tif'].includes(effectiveFileExtension)) {
       console.log('[RAG Processor] Processing image file with OCR via Document AI...');
