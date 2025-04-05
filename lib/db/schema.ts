@@ -88,6 +88,7 @@ export const documents = pgTable('documents', {
   totalChunks: integer('totalChunks'),
   processedChunks: integer('processedChunks').notNull().default(0),
   title: text('title'),
+  folderPath: text('folderPath'),
 }, (table) => ({
   userIdIdx: index('documents_userId_idx').on(table.userId)
 }));

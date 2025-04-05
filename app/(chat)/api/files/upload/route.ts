@@ -57,6 +57,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     const form = await request.formData();
     const file = form.get('file') as File;
     
+    // Get the folderPath from the form data, if provided
+    const folderPath = form.get('folderPath') as string | null;
+    
     if (!file) {
       return NextResponse.json(
         { error: 'No file provided' },
@@ -65,7 +68,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // Log file details to help with debugging
-    console.log(`[Upload API] Processing file: ${file.name}, Size: ${(file.size / (1024 * 1024)).toFixed(2)}MB, Type: ${file.type}`);
+    console.log(`[Upload API] Processing file: ${file.name}, Size: ${(file.size / (1024 * 1024)).toFixed(2)}MB, Type: ${file.type}, FolderPath: ${folderPath || 'root'}`);
     
     // Enhanced debugging for DOCX files
     if (file.name.toLowerCase().endsWith('.docx')) {
@@ -110,10 +113,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       fileName: file.name,
       fileSize: file.size,
       fileType: file.type,
-      processingStatus: 'pending'
+      processingStatus: 'pending',
+      folderPath: folderPath || undefined // Pass folderPath to saveDocument
     });
 
-    console.log(`[Upload API] Document ${documentId} saved to database`);
+    console.log(`[Upload API] Document ${documentId} saved to database. Folder path: ${folderPath || 'none'}`);
 
     // Get file extension
     const fileExtension = file.name.split('.').pop()?.toLowerCase();

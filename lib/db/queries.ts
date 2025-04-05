@@ -186,6 +186,7 @@ export async function saveDocument({
   statusMessage,
   totalChunks,
   processedChunks,
+  folderPath,
 }: {
   id: string;
   userId: string;
@@ -197,6 +198,7 @@ export async function saveDocument({
   statusMessage?: string;
   totalChunks?: number;
   processedChunks?: number;
+  folderPath?: string; // New parameter for folder structure
 }) {
   try {
     console.log('saveDocument called with:', { 
@@ -204,6 +206,7 @@ export async function saveDocument({
       fileSize: fileSize.toString(), // Convert to string for logging
       blobUrl: blobUrl?.substring(0, 30) + '...', // Truncate for logging
       processingStatus, statusMessage, totalChunks, processedChunks,
+      folderPath, // Log folderPath
     });
     
     const [insertedDocument] = await db.insert(documents).values({
@@ -217,6 +220,7 @@ export async function saveDocument({
       statusMessage,
       totalChunks,
       processedChunks: processedChunks ?? 0,
+      folderPath, // Include folderPath in insert
       createdAt: new Date(),     // Explicitly set createdAt
       updatedAt: new Date(),     // Explicitly set updatedAt
       // @ts-ignore - Title column exists in database but not in our schema

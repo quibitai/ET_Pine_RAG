@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { fetcher } from '@/lib/utils';
+import { FolderUploadButton } from '@/components/folder-upload-button';
 
 // Types for document
 type Document = {
@@ -62,6 +63,7 @@ type Document = {
   blobUrl: string;
   totalChunks?: number | null;
   processedChunks?: number | null;
+  folderPath?: string | null;
 };
 
 // Helper function to format file size
@@ -219,9 +221,16 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
             Manage your knowledge base documents
           </p>
         </div>
-        <Button onClick={handleUpload}>
-          Upload Document
-        </Button>
+        <div className="flex gap-2">
+          <FolderUploadButton 
+            onUploadComplete={(results) => {
+              mutate(); // Refresh documents after upload completes
+            }}
+          />
+          <Button onClick={handleUpload}>
+            Upload Document
+          </Button>
+        </div>
       </div>
       
       <div className="rounded-md border">
@@ -239,6 +248,11 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
                       <ChevronUpIcon className="ml-1 h-4 w-4" /> : 
                       <ChevronDownIcon className="ml-1 h-4 w-4" />
                   )}
+                </div>
+              </TableHead>
+              <TableHead>
+                <div className="flex items-center">
+                  Folder Path
                 </div>
               </TableHead>
               <TableHead 
@@ -286,7 +300,7 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
+                <TableCell colSpan={6} className="h-24 text-center">
                   <div className="flex justify-center items-center h-full">
                     <Loader2Icon className="h-6 w-6 animate-spin mr-2" />
                     <span>Loading documents...</span>
@@ -301,6 +315,15 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
                       {getFileIcon(doc.fileType)}
                       <span className="ml-2 truncate max-w-[250px]">{doc.fileName}</span>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {doc.folderPath ? (
+                      <span className="text-xs text-muted-foreground">
+                        {doc.folderPath}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell>{formatFileSize(doc.fileSize)}</TableCell>
                   <TableCell>
@@ -399,12 +422,15 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
+                <TableCell colSpan={6} className="h-24 text-center">
                   <div className="flex flex-col items-center justify-center h-full">
                     <p className="text-muted-foreground mb-2">No documents found</p>
-                    <Button variant="outline" onClick={handleUpload}>
-                      Upload your first document
-                    </Button>
+                    <div className="flex gap-2">
+                      <FolderUploadButton />
+                      <Button variant="outline" onClick={handleUpload}>
+                        Upload your first document
+                      </Button>
+                    </div>
                   </div>
                 </TableCell>
               </TableRow>
