@@ -521,13 +521,21 @@ export async function POST(request: Request) {
       'explain this',
       'analyze this document',
       'extract key points',
-      'give me the main points'
+      'give me the main points',
+      'tell me about it',
+      'explain the content',
+      'what\'s in it',
+      'tldr',
+      'highlight the key information',
+      'review this document'
     ];
     
     // Try to identify the intended document if this appears to be a generic query
     let intendedDocumentId = '';
     let intendedDocumentName = '';
     let relevanceScore = 0;
+    let contextIsRelevant = false;
+    let primarySourceDocumentName = '';
     
     // Extract query text for checking if it's a generic query
     const userQueryText = userMessage.parts[0] && 'text' in userMessage.parts[0] ? 
@@ -544,27 +552,29 @@ export async function POST(request: Request) {
     console.log(`[API Chat] Is generic document query: ${isGenericQuery}`);
     
     // Check if the most recent user message has exactly one attachment
-    if (isGenericQuery && userMessage.experimental_attachments && userMessage.experimental_attachments.length === 1) {
-      const attachment = userMessage.experimental_attachments[0];
-      console.log(`[API Chat] Message has one attachment: ${attachment.name || 'unnamed'}`);
+    const recentUserMessageAttachments = userMessage.experimental_attachments;
+    if (isGenericQuery && recentUserMessageAttachments && recentUserMessageAttachments.length === 1) {
+      const attachment = recentUserMessageAttachments[0];
+      console.log(`[API Chat] Heuristic: Message has one attachment: ${attachment.name || 'unnamed'}`);
       
       // Try to extract documentId from attachment
       // @ts-ignore - Check if documentId exists on the attachment object
       if (attachment.documentId) {
         // @ts-ignore - Use the documentId from the attachment
         intendedDocumentId = attachment.documentId;
-        console.log(`[API Chat] Found documentId on attachment: ${intendedDocumentId}`);
+        console.log(`[API Chat] Heuristic: Found documentId on attachment: ${intendedDocumentId}`);
       } else if (attachment.url) {
         // Extract from URL if possible
         const urlMatch = attachment.url.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i);
         if (urlMatch && urlMatch[1]) {
           intendedDocumentId = urlMatch[1];
-          console.log(`[API Chat] Extracted documentId from URL: ${intendedDocumentId}`);
+          console.log(`[API Chat] Heuristic: Extracted documentId from URL: ${intendedDocumentId}`);
         }
       }
       
       // Use name for reference
       intendedDocumentName = attachment.name || 'recently uploaded document';
+      console.log(`[API Chat] Heuristic: Intended document name from attachment: ${intendedDocumentName}`);
     }
     
     // Only perform additional checks if we have context and identified a potential document
@@ -585,12 +595,16 @@ export async function POST(request: Request) {
           // Calculate a relevance score (0-100%)
           relevanceScore = totalMatches > 0 ? (relevantCount / totalMatches) * 100 : 0;
           
+          // Determine if context is relevant (at least 50% of matches from intended document)
+          contextIsRelevant = relevanceScore >= 50;
+          
           console.log(`[API Chat] Relevance Check: ${relevantCount}/${totalMatches} matches (${relevanceScore.toFixed(1)}%) belong to intended document`);
+          console.log(`[API Chat] Context is relevant to intended document: ${contextIsRelevant}`);
           
           // Get document name from metadata if available
           if (relevantMatches.length > 0 && relevantMatches[0].metadata && relevantMatches[0].metadata.source) {
-            intendedDocumentName = relevantMatches[0].metadata.source;
-            console.log(`[API Chat] Using source name from metadata: ${intendedDocumentName}`);
+            primarySourceDocumentName = relevantMatches[0].metadata.source;
+            console.log(`[API Chat] Using source name from metadata: ${primarySourceDocumentName}`);
           }
         }
       } catch (error) {
@@ -606,18 +620,18 @@ export async function POST(request: Request) {
       
       // Add specific instructions based on query type and relevance
       if (isGenericQuery) {
-        if (intendedDocumentId && relevanceScore >= 50) {
+        if (intendedDocumentId && contextIsRelevant && primarySourceDocumentName) {
           // High relevance - Add specific instruction to focus on the intended document
-          contextInstructions = `IMPORTANT: The user is referring to the document "${intendedDocumentName}". Please provide a comprehensive summary or analysis based on the context provided from that document. When using information from the context, mention the source document (e.g., "According to [SOURCE NAME]").`;
-          console.log(`[API Chat] Added instruction to focus on document: ${intendedDocumentName}`);
-        } else if (intendedDocumentId) {
+          contextInstructions = `IMPORTANT: The user's query refers to the document "${primarySourceDocumentName}". Please provide a comprehensive summary or analysis based on the context provided from this document. When using information from the context, mention the source document (e.g., "According to [SOURCE NAME]").`;
+          console.log(`[API Chat] Added specific instruction for generic query targeting document: ${primarySourceDocumentName}`);
+        } else if (intendedDocumentId && !contextIsRelevant) {
           // Low relevance but we know which document they mean - Guide the AI to handle this
           contextInstructions = `NOTE: The user appears to be asking about the document "${intendedDocumentName}", but the retrieved context may not contain sufficient information from this document. Please do your best to summarize the available context, mentioning the source document (e.g., "According to [SOURCE NAME]"). If the context isn't sufficient, politely explain that you don't have enough information about this specific document.`;
-          console.log(`[API Chat] Added instruction for low-relevance document: ${intendedDocumentName}`);
+          console.log(`[API Chat] Added instruction to work with limited context for document: ${intendedDocumentName}`);
         } else {
           // Generic query but no specific document identified - Add clarification instruction
-          contextInstructions = `NOTE: The user asked a generic question about a document, but it's unclear which specific document they're referring to. Use the context provided if relevant, mentioning the source document (e.g., "According to [SOURCE NAME]"). If you're unsure which document they mean, please ask for clarification.`;
-          console.log(`[API Chat] Added instruction to seek clarification for generic query`);
+          contextInstructions = `NOTE: If unsure which document the user's generic query refers to, please ask for clarification. Use the context provided if relevant, mentioning the source document (e.g., "According to [SOURCE NAME]").`;
+          console.log(`[API Chat] Added instruction to seek clarification for generic query without clear document reference`);
         }
       }
       
