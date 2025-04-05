@@ -13,8 +13,8 @@ export const chatModels: Array<ChatModel> = [
     description: 'OpenAI\'s compact multimodal model',
   },
   {
-    id: 'chat-model',
-    name: 'Gemini 2.5 Pro Exp',
-    description: 'Google\'s advanced chat model',
+    id: 'echotango-bit',
+    name: 'EchoTango Bit',
+    description: 'Echo Tango\'s AI Assistant',
   }
 ];
