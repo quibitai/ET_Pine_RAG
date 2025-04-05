@@ -1,4 +1,4 @@
-export const DEFAULT_CHAT_MODEL: string = 'openai-chat-model';
+export const DEFAULT_CHAT_MODEL: string = 'echotango-bit';
 
 interface ChatModel {
   id: string;
