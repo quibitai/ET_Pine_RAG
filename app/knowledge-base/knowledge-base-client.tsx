@@ -210,7 +210,48 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
   
   // Handle document upload
   const handleUpload = () => {
-    router.push('/'); // Navigate to the chat page for uploading
+    // Open file selection dialog directly instead of redirecting
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.multiple = true;
+    fileInput.accept = '.pdf,.txt,.docx,.doc,.xlsx,.xls,.csv,.md';
+    
+    fileInput.onchange = async (event) => {
+      const files = Array.from((event.target as HTMLInputElement).files || []);
+      if (!files.length) return;
+      
+      // Upload each file
+      let successCount = 0;
+      for (const file of files) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          const response = await fetch('/api/files/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (response.ok) {
+            successCount++;
+          } else {
+            console.error(`Failed to upload ${file.name}`);
+            const errorData = await response.json();
+            toast.error(`Failed to upload ${file.name}: ${errorData.error || 'Unknown error'}`);
+          }
+        } catch (error) {
+          console.error(`Error uploading ${file.name}:`, error);
+          toast.error(`Error uploading ${file.name}`);
+        }
+      }
+      
+      if (successCount > 0) {
+        toast.success(`Successfully uploaded ${successCount} file${successCount === 1 ? '' : 's'}`);
+        mutate(); // Refresh the document list
+      }
+    };
+    
+    fileInput.click();
   };
   
   return (

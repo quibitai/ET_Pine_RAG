@@ -635,8 +635,28 @@ export async function getUserDocuments({
   try {
     console.log(`Retrieving files for user ${userId}`);
     
+    // Instead of using select() which tries to get all columns including potentially missing folderPath,
+    // explicitly select only the columns we're sure exist
     const results = await db
-      .select()
+      .select({
+        id: documents.id,
+        createdAt: documents.createdAt,
+        updatedAt: documents.updatedAt,
+        userId: documents.userId,
+        fileName: documents.fileName,
+        fileType: documents.fileType,
+        fileSize: documents.fileSize,
+        blobUrl: documents.blobUrl,
+        processingStatus: documents.processingStatus,
+        statusMessage: documents.statusMessage,
+        totalChunks: documents.totalChunks,
+        processedChunks: documents.processedChunks,
+        title: documents.title,
+        // Safely try to get folderPath which may not exist yet
+        // The folderPath property is explicitly declared in our schema
+        // but may not be present in the actual database until migration runs
+        folderPath: documents.folderPath,
+      })
       .from(documents)
       .where(eq(documents.userId, userId))
       .orderBy(desc(documents.createdAt));
@@ -645,6 +665,44 @@ export async function getUserDocuments({
     return results;
   } catch (error) {
     console.error('Failed to get documents by user id from database', error);
+    // If error is specifically about missing the folderPath column (common during migration)
+    // we'll retry with a more restricted column list
+    if (error instanceof Error && 
+        (error.message.includes('folderPath') || 
+         error.message.includes('does not exist'))) {
+      
+      console.log('Falling back to query without folderPath column');
+      try {
+        const fallbackResults = await db
+          .select({
+            id: documents.id,
+            createdAt: documents.createdAt,
+            updatedAt: documents.updatedAt,
+            userId: documents.userId,
+            fileName: documents.fileName,
+            fileType: documents.fileType,
+            fileSize: documents.fileSize,
+            blobUrl: documents.blobUrl,
+            processingStatus: documents.processingStatus,
+            statusMessage: documents.statusMessage,
+            totalChunks: documents.totalChunks,
+            processedChunks: documents.processedChunks,
+            title: documents.title,
+            // Add null for folderPath to maintain interface compatibility
+            folderPath: null as any,
+          })
+          .from(documents)
+          .where(eq(documents.userId, userId))
+          .orderBy(desc(documents.createdAt));
+        
+        console.log(`Fallback retrieved ${fallbackResults.length} files for user ${userId}`);
+        return fallbackResults;
+      } catch (fallbackError) {
+        console.error('Fallback query also failed:', fallbackError);
+        throw fallbackError;
+      }
+    }
+    
     throw error;
   }
 }
