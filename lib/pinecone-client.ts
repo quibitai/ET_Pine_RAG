@@ -39,6 +39,8 @@ if (!INDEX_HOST) {
 }
 
 console.log(`- Using OpenAI text-embedding-3-large (3072 dimensions)`);
+console.log(`- IMPORTANT: Ensure your Pinecone index "${INDEX_NAME}" is configured for 3072 dimensions`);
+console.log(`- If you see dimension mismatch errors, recreate your index with 3072 dimensions`);
 console.log("-----------------------------");
 // --- End Logging ---
 
@@ -151,6 +153,16 @@ async function testPineconeConnection(client: Pinecone, indexName: string): Prom
       console.log(`- Dimensions: ${stats.dimension || 'unknown'}`);
       console.log(`- Namespaces: ${Object.keys(stats.namespaces || {}).length}`);
       
+      // Check for dimension mismatch
+      if (stats.dimension && stats.dimension !== 3072) {
+        console.error(`❌ CRITICAL DIMENSION MISMATCH: Your Pinecone index has ${stats.dimension} dimensions, but OpenAI text-embedding-3-large produces 3072 dimensions.`);
+        console.error(`This will cause errors when storing or querying vectors. You need to recreate your Pinecone index with 3072 dimensions.`);
+        console.warn(`To fix: Go to https://app.pinecone.io, delete the index "${indexName}", and create a new one with 3072 dimensions.`);
+        // We still return true because connection succeeded, but the user needs to fix this
+      } else if (stats.dimension && stats.dimension === 3072) {
+        console.log('✅ Dimension check passed: Index dimension matches OpenAI text-embedding-3-large (3072)');
+      }
+      
       return true;
     } catch (error) {
       console.timeEnd('pinecone_describe_index');
@@ -259,10 +271,18 @@ export async function queryPineconeWithDiagnostics(
     throw new Error('Query vector is required and must not be empty');
   }
 
+  // Check vector dimensions
+  const EXPECTED_DIMENSIONS = 3072; // OpenAI text-embedding-3-large produces 3072 dimensions
+  if (queryVector.length !== EXPECTED_DIMENSIONS) {
+    console.error(`❌ DIMENSION MISMATCH: Query vector has ${queryVector.length} dimensions, but index expects ${EXPECTED_DIMENSIONS} dimensions`);
+    console.error('This is likely because you are using a different embedding model than OpenAI text-embedding-3-large');
+    console.error('Check your embedding generation code to ensure it uses OpenAI text-embedding-3-large');
+  }
+
   console.time('pinecone_query_total');
   console.log(`=== Starting Pinecone query (index: ${indexName}) ===`);
   console.log(`Query parameters: topK=${topK}, filter=${filter ? JSON.stringify(filter) : 'none'}`);
-  console.log(`Vector dimensions: ${queryVector.length}`);
+  console.log(`Vector dimensions: ${queryVector.length}, Expected: ${EXPECTED_DIMENSIONS}`);
 
   try {
     const index = pineconeClient.index(indexName);

@@ -3,11 +3,11 @@ import { updateFileRagStatus, getDocumentById } from './db/queries';
 import type { PineconeRecord, RecordMetadata } from '@pinecone-database/pinecone';
 import { DocumentProcessorServiceClient } from '@google-cloud/documentai';
 import { del } from '@vercel/blob';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Client as QStashClient } from '@upstash/qstash';
-import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
+import mammoth from 'mammoth';
+import { generateEmbeddings } from './ai/utils';
+import { Client as QStashClient } from '@upstash/qstash';
 
 // Environment variables
 const GOOGLE_CREDENTIALS_JSON_CONTENT = process.env.GOOGLE_CREDENTIALS_JSON;
@@ -92,9 +92,6 @@ if (!GOOGLE_CREDENTIALS_JSON_CONTENT) {
     throw new Error("Server configuration error: Could not parse Google Cloud credentials JSON.");
   }
 }
-
-// Initialize the Google Generative AI client
-const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
 
 // Initialize QStash client
 const qstashClient = new QStashClient({
@@ -297,111 +294,6 @@ export async function extractTextWithGoogleDocumentAI(
       
       // Suggest the correct format based on screenshots
       console.error(`[RAG Processor] Try using this exact processor string: projects/openwebui-451318/locations/us/processors/5df939cb6b4e3bd4`);
-    }
-    
-    throw error;
-  }
-}
-
-/**
- * Generates embeddings for text using OpenAI's embedding model.
- * @param {string} text - The text to embed.
- * @returns {Promise<number[]>} The embedding vector.
- */
-export async function generateEmbeddings(text: string): Promise<number[]> {
-  try {
-    console.log(`[RAG Processor] Generating embeddings for text (length: ${text.length})`);
-    
-    // Try multiple approaches to get a working API key
-    let apiKey = GOOGLE_API_KEY;
-    
-    // Log API key status
-    if (!apiKey) {
-      console.error("[RAG Processor] GOOGLE_API_KEY is not set from environment variables");
-      
-      // Alternative: Try to get API key directly
-      apiKey = process.env.GOOGLE_API_KEY || '';
-      console.log(`[RAG Processor] Direct process.env access: API key ${apiKey ? "is set" : "is NOT set"}`);
-      
-      // Log available environment variables (safely)
-      console.log("[RAG Processor] Available environment variables containing 'GOOGLE':");
-      for (const key in process.env) {
-        if (key.includes("GOOGLE")) {
-          console.log(`[RAG Processor] - ${key}: ${process.env[key] ? "is set" : "is NOT set"}`);
-        }
-      }
-      
-      throw new Error("Cannot generate embeddings: GOOGLE_API_KEY environment variable is not set");
-    }
-    
-    // Check for OpenAI API key for embeddings (to match Pinecone dimensions)
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    
-    // If OpenAI API key is available, use it (produces 3072 dimension vectors)
-    if (openaiApiKey) {
-      console.log("[RAG Processor] Using OpenAI for embeddings to match Pinecone dimensions (3072)");
-      
-      // Create fetch request to OpenAI embeddings API
-      const response = await fetch('https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openaiApiKey}`
-        },
-        body: JSON.stringify({
-          input: text,
-          model: "text-embedding-3-large"  // 3072 dimensions to match Pinecone
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}. ${JSON.stringify(errorData)}`);
-      }
-      
-      const data = await response.json();
-      const embedding = data.data[0].embedding;
-      
-      console.log(`[RAG Processor] Successfully generated OpenAI embedding vector of length ${embedding.length}`);
-      return embedding;
-    }
-    
-    // Fallback to Google AI if OpenAI key is not available (but show warning about dimension mismatch)
-    console.warn("[RAG Processor] WARNING: Using Google AI for embeddings but dimensions (768) don't match Pinecone (3072)");
-    console.warn("[RAG Processor] Set OPENAI_API_KEY to fix dimension mismatch with Pinecone");
-    
-    // Initialize the genAI client directly with the API key
-    console.log(`[RAG Processor] Initializing Google AI with API key (${apiKey.substring(0, 4)}...)`);
-    const localGenAI = new GoogleGenerativeAI(apiKey);
-    
-    const embeddingModel = localGenAI.getGenerativeModel({ model: "embedding-001" });
-    console.log(`[RAG Processor] Created embedding model, generating embeddings...`);
-    
-    const result = await embeddingModel.embedContent(text);
-    const embedding = result.embedding.values;
-    
-    console.log(`[RAG Processor] Successfully generated embedding vector of length ${embedding.length}`);
-    return embedding;
-  } catch (error) {
-    console.error('[RAG Processor] Error generating embeddings:', error);
-    
-    // Enhanced error diagnostics for API key issues
-    if (error instanceof Error && 
-        (error.message.includes('403 Forbidden') || 
-         error.message.includes('unregistered callers') || 
-         error.message.includes('API Key'))) {
-      
-      console.error('[RAG Processor] Authentication error with Google AI API:');
-      console.error(`[RAG Processor] 1. Check that GOOGLE_API_KEY environment variable is set in Vercel`);
-      console.error(`[RAG Processor] 2. Verify the API key is valid and has access to Generative AI API`);
-      console.error(`[RAG Processor] 3. Make sure the API key is enabled for the embedding-001 model`);
-      
-      // Show API key status (safely)
-      if (!GOOGLE_API_KEY) {
-        console.error(`[RAG Processor] Current API key status: NOT SET (empty string)`);
-      } else {
-        console.error(`[RAG Processor] Current API key status: SET (starts with "${GOOGLE_API_KEY.substring(0, 4)}...")`);
-      }
     }
     
     throw error;

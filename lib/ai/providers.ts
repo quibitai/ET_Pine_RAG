@@ -15,8 +15,8 @@ import {
   titleModel,
 } from './models.test';
 
-// Configure Gemini embedding model for RAG
-export const embeddingModel = google('models/text-embedding-004');
+// Configure OpenAI embedding model for RAG (3072 dimensions to match Pinecone)
+export const embeddingModel = openai('text-embedding-3-large');
 
 // Explicitly define the models to use
 const geminiModel = 'models/gemini-2.5-pro-exp-03-25';

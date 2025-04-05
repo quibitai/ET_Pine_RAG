@@ -10,43 +10,32 @@ import {
   foreignKey,
   boolean,
   integer,
+  index,
 } from 'drizzle-orm/pg-core';
 
 export const user = pgTable('User', {
-  id: uuid('id').primaryKey().notNull().defaultRandom(),
-  email: varchar('email', { length: 64 }).notNull(),
-  password: varchar('password', { length: 64 }),
+  id: uuid('id').primaryKey().notNull(),
+  email: text('email').notNull(),
+  name: text('name'),
 });
 
 export type User = InferSelectModel<typeof user>;
 
 export const chat = pgTable('Chat', {
   id: uuid('id').primaryKey().notNull().defaultRandom(),
-  createdAt: timestamp('createdAt').notNull(),
   title: text('title').notNull(),
   userId: uuid('userId')
     .notNull()
     .references(() => user.id),
+  createdAt: timestamp('createdAt').notNull(),
   visibility: varchar('visibility', { enum: ['public', 'private'] })
     .notNull()
     .default('private'),
-});
+}, (table) => ({
+  userIdIdx: index('chat_userId_idx').on(table.userId)
+}));
 
 export type Chat = InferSelectModel<typeof chat>;
-
-// DEPRECATED: The following schema is deprecated and will be removed in the future.
-// Read the migration guide at https://github.com/vercel/ai-chatbot/blob/main/docs/04-migrate-to-parts.md
-export const messageDeprecated = pgTable('Message', {
-  id: uuid('id').primaryKey().notNull().defaultRandom(),
-  chatId: uuid('chatId')
-    .notNull()
-    .references(() => chat.id),
-  role: varchar('role').notNull(),
-  content: json('content').notNull(),
-  createdAt: timestamp('createdAt').notNull(),
-});
-
-export type MessageDeprecated = InferSelectModel<typeof messageDeprecated>;
 
 export const message = pgTable('Message_v2', {
   id: uuid('id').primaryKey().notNull().defaultRandom(),
@@ -57,31 +46,11 @@ export const message = pgTable('Message_v2', {
   parts: json('parts').notNull(),
   attachments: json('attachments').notNull(),
   createdAt: timestamp('createdAt').notNull(),
-});
+}, (table) => ({
+  chatIdIdx: index('message_chatId_idx').on(table.chatId)
+}));
 
 export type DBMessage = InferSelectModel<typeof message>;
-
-// DEPRECATED: The following schema is deprecated and will be removed in the future.
-// Read the migration guide at https://github.com/vercel/ai-chatbot/blob/main/docs/04-migrate-to-parts.md
-export const voteDeprecated = pgTable(
-  'Vote',
-  {
-    chatId: uuid('chatId')
-      .notNull()
-      .references(() => chat.id),
-    messageId: uuid('messageId')
-      .notNull()
-      .references(() => messageDeprecated.id),
-    isUpvoted: boolean('isUpvoted').notNull(),
-  },
-  (table) => {
-    return {
-      pk: primaryKey({ columns: [table.chatId, table.messageId] }),
-    };
-  },
-);
-
-export type VoteDeprecated = InferSelectModel<typeof voteDeprecated>;
 
 export const vote = pgTable(
   'Vote_v2',
@@ -107,7 +76,9 @@ export const documents = pgTable('documents', {
   id: uuid('id').defaultRandom().primaryKey(),
   createdAt: timestamp('createdAt').defaultNow().notNull(),
   updatedAt: timestamp('updatedAt').defaultNow().notNull(),
-  userId: text('userId').notNull(),
+  userId: uuid('userId')
+    .notNull()
+    .references(() => user.id),
   fileName: text('fileName').notNull(),
   fileType: text('fileType').notNull(),
   fileSize: integer('fileSize').notNull(),
@@ -116,8 +87,10 @@ export const documents = pgTable('documents', {
   statusMessage: text('statusMessage'),
   totalChunks: integer('totalChunks'),
   processedChunks: integer('processedChunks').notNull().default(0),
-  title: text('title').notNull(),
-});
+  title: text('title'),
+}, (table) => ({
+  userIdIdx: index('documents_userId_idx').on(table.userId)
+}));
 
 export type Document = InferSelectModel<typeof documents>;
 
