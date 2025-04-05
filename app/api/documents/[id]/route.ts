@@ -60,17 +60,32 @@ export async function DELETE(
     const user = session?.user;
 
     if (!user || !user.id) {
+      console.error('Unauthorized deletion attempt - no valid user session');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { id } = params;
-    console.info(`Deleting document ${id}`);
+    console.info(`API: Processing document deletion request for document ${id} by user ${user.id}`);
     
-    await deleteDocument(id, user.id);
-    
-    return NextResponse.json({ success: true });
+    try {
+      await deleteDocument(id, user.id);
+      console.info(`API: Successfully deleted document ${id}`);
+      return NextResponse.json({ success: true, message: 'Document successfully deleted' });
+    } catch (docError) {
+      // Specific error handling for document service errors
+      if (docError instanceof Error) {
+        if (docError.message.includes('not found')) {
+          console.error(`API: Document ${id} not found for deletion`);
+          return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+        } else if (docError.message.includes('Unauthorized')) {
+          console.error(`API: Unauthorized deletion attempt for document ${id} by user ${user.id}`);
+          return NextResponse.json({ error: 'Unauthorized access to document' }, { status: 403 });
+        }
+      }
+      throw docError; // Re-throw for the outer catch
+    }
   } catch (error) {
-    console.error('Error deleting document:', error);
+    console.error('API: Error deleting document:', error);
     return NextResponse.json(
       { 
         error: 'Failed to delete document',

@@ -56,19 +56,65 @@ export async function pineconeDeleteEmbeddings(documentIds: string[]) {
       throw new Error('PINECONE_INDEX_NAME is not defined');
     }
     
+    if (!documentIds.length) {
+      console.warn('No document IDs provided for deletion');
+      return false;
+    }
+    
+    console.log(`Attempting to delete embeddings for documents: ${documentIds.join(', ')}`);
     const index = pineconeClient.index(process.env.PINECONE_INDEX_NAME);
     
-    // Delete vectors using a filter for the document IDs
-    await index.deleteMany({
-      filter: {
-        documentId: { $in: documentIds }
+    // Try deleting with multiple filter formats to ensure compatibility
+    // First try with documentId as an array
+    try {
+      console.log(`Attempting deletion with filter: documentId in [${documentIds.join(', ')}]`);
+      await index.deleteMany({
+        filter: {
+          documentId: { $in: documentIds }
+        }
+      });
+      console.log(`Successfully deleted embeddings using documentId filter`);
+    } catch (filterError) {
+      console.error(`First deletion attempt failed: ${filterError}`);
+      
+      // If the first attempt fails, try with metadata.documentId
+      try {
+        console.log(`Attempting deletion with alternative filter: metadata.documentId in [${documentIds.join(', ')}]`);
+        await index.deleteMany({
+          filter: {
+            "metadata.documentId": { $in: documentIds }
+          }
+        });
+        console.log(`Successfully deleted embeddings using metadata.documentId filter`);
+      } catch (metadataError) {
+        console.error(`Second deletion attempt failed: ${metadataError}`);
+        
+        // As a last resort, try deleting one by one with different filter formats
+        let anySuccess = false;
+        for (const docId of documentIds) {
+          try {
+            console.log(`Attempting individual deletion for document: ${docId}`);
+            await index.deleteMany({
+              filter: { documentId: docId }
+            });
+            anySuccess = true;
+            console.log(`Successfully deleted embeddings for document: ${docId}`);
+          } catch (individualError) {
+            console.error(`Failed to delete embeddings for document ${docId}: ${individualError}`);
+          }
+        }
+        
+        if (!anySuccess) {
+          throw new Error('All deletion attempts failed');
+        }
       }
-    });
+    }
     
-    console.log(`Successfully deleted embeddings for documents: ${documentIds.join(', ')}`);
+    console.log(`Embeddings deletion process completed for documents: ${documentIds.join(', ')}`);
     return true;
   } catch (error) {
     console.error(`Failed to delete embeddings: ${error}`);
+    // Re-throw to allow the calling function to handle the error
     throw error;
   }
 }
@@ -110,41 +156,65 @@ export async function getDocumentDetails(id: string) {
  * @returns true if successful, throws error otherwise
  */
 export async function deleteDocument(id: string, userId: string) {
+  console.log(`Starting deletion process for document ${id} by user ${userId}`);
   try {
     // 1. Get the document to verify ownership and get the blob URL
     const document = await getDocumentById({ id });
     
     if (!document) {
+      console.error(`Document ${id} not found`);
       throw new Error('Document not found');
     }
     
     if (document.userId !== userId) {
+      console.error(`Unauthorized access to document ${id} by user ${userId}`);
       throw new Error('Unauthorized access to document');
     }
     
+    console.log(`Document ${id} (${document.fileName}) found and verified for deletion`);
+    
     // 2. Delete document vector embeddings from Pinecone
+    let pineconeSuccess = false;
     try {
+      console.log(`Attempting to delete embeddings for document ${id} from Pinecone`);
       await pineconeDeleteEmbeddings([id]);
+      pineconeSuccess = true;
+      console.log(`Successfully deleted embeddings for document ${id} from Pinecone`);
     } catch (error) {
-      console.error(`Error deleting embeddings for document ${id}:`, error);
+      console.error(`Error deleting embeddings for document ${id} from Pinecone:`, error);
       // Continue with deletion even if Pinecone deletion fails
     }
     
     // 3. Delete the file from Vercel Blob storage if URL exists
+    let blobSuccess = false;
     if (document.blobUrl) {
       try {
+        console.log(`Attempting to delete blob for document ${id} at URL ${document.blobUrl}`);
         await del(document.blobUrl);
+        blobSuccess = true;
+        console.log(`Successfully deleted blob for document ${id}`);
       } catch (error) {
         console.error(`Error deleting blob for document ${id}:`, error);
         // Continue with deletion even if blob deletion fails
       }
+    } else {
+      console.log(`No blob URL found for document ${id}`);
     }
     
     // 4. Delete the document record from the database
+    console.log(`Deleting document ${id} from database`);
     await db.delete(documents).where(and(
       eq(documents.id, id),
       eq(documents.userId, userId)
     ));
+    console.log(`Successfully deleted document ${id} from database`);
+    
+    // 5. Log deletion summary
+    console.log(`Document deletion summary for ${id}:
+      - Database deletion: Success
+      - Pinecone embeddings deletion: ${pineconeSuccess ? 'Success' : 'Failed'}
+      - Blob storage deletion: ${document.blobUrl ? (blobSuccess ? 'Success' : 'Failed') : 'N/A'}
+    `);
     
     return true;
   } catch (error) {
