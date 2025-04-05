@@ -57,65 +57,107 @@ export async function pineconeDeleteEmbeddings(documentIds: string[]) {
     }
     
     if (!documentIds.length) {
-      console.warn('No document IDs provided for deletion');
+      console.warn('[Deletion] No document IDs provided for deletion');
       return false;
     }
     
-    console.log(`Attempting to delete embeddings for documents: ${documentIds.join(', ')}`);
-    const index = pineconeClient.index(process.env.PINECONE_INDEX_NAME);
+    console.log(`[Deletion] Starting embeddings deletion process for documents: ${documentIds.join(', ')}`);
     
-    // Try deleting with multiple filter formats to ensure compatibility
-    // First try with documentId as an array
-    try {
-      console.log(`Attempting deletion with filter: documentId in [${documentIds.join(', ')}]`);
-      await index.deleteMany({
-        filter: {
-          documentId: { $in: documentIds }
-        }
-      });
-      console.log(`Successfully deleted embeddings using documentId filter`);
-    } catch (filterError) {
-      console.error(`First deletion attempt failed: ${filterError}`);
-      
-      // If the first attempt fails, try with metadata.documentId
+    // Process each document individually
+    for (const documentId of documentIds) {
       try {
-        console.log(`Attempting deletion with alternative filter: metadata.documentId in [${documentIds.join(', ')}]`);
-        await index.deleteMany({
-          filter: {
-            "metadata.documentId": { $in: documentIds }
-          }
-        });
-        console.log(`Successfully deleted embeddings using metadata.documentId filter`);
-      } catch (metadataError) {
-        console.error(`Second deletion attempt failed: ${metadataError}`);
+        // 1. Get the document metadata to retrieve totalChunks
+        const document = await getDocumentById({ id: documentId });
         
-        // As a last resort, try deleting one by one with different filter formats
-        let anySuccess = false;
-        for (const docId of documentIds) {
+        if (!document) {
+          console.warn(`[Deletion] Document ${documentId} not found for Pinecone deletion`);
+          continue;
+        }
+        
+        const totalChunks = document.totalChunks;
+        
+        // 2. Generate vector IDs based on totalChunks
+        let vectorIdsToDelete: string[] = [];
+        if (totalChunks && totalChunks > 0) {
+          vectorIdsToDelete = Array.from({ length: totalChunks }, (_, i) => `${documentId}_chunk_${i}`);
+          console.log(`[Deletion] Generated ${vectorIdsToDelete.length} vector IDs to delete for document ${documentId}`);
+        } else {
+          // Log a warning if chunk count is missing or zero
+          console.warn(`[Deletion] Document ${documentId} has totalChunks=${totalChunks}. Skipping Pinecone deletion by ID as vector IDs cannot be determined.`);
+          
+          // Try filter-based deletion as fallback
           try {
-            console.log(`Attempting individual deletion for document: ${docId}`);
-            await index.deleteMany({
-              filter: { documentId: docId }
-            });
-            anySuccess = true;
-            console.log(`Successfully deleted embeddings for document: ${docId}`);
-          } catch (individualError) {
-            console.error(`Failed to delete embeddings for document ${docId}: ${individualError}`);
+            await deleteByFilter(documentId);
+          } catch (filterError) {
+            console.error(`[Deletion] Failed to delete with filter fallback for document ${documentId}: ${filterError}`);
           }
+          continue;
         }
         
-        if (!anySuccess) {
-          throw new Error('All deletion attempts failed');
+        // 3. Delete vectors by ID
+        if (vectorIdsToDelete.length > 0) {
+          try {
+            const index = pineconeClient.index(process.env.PINECONE_INDEX_NAME);
+            console.log(`[Deletion] Attempting to delete ${vectorIdsToDelete.length} vectors by ID from Pinecone...`);
+            await index.deleteMany({ ids: vectorIdsToDelete });
+            console.log(`[Deletion] Successfully deleted vectors by ID from Pinecone for document ${documentId}`);
+          } catch (pineconeError) {
+            console.error(`[Deletion] Error deleting vectors by ID from Pinecone for document ${documentId}:`, pineconeError);
+            
+            // Try filter-based deletion as fallback
+            try {
+              console.log(`[Deletion] Attempting fallback to filter-based deletion for document ${documentId}`);
+              await deleteByFilter(documentId);
+            } catch (filterError) {
+              console.error(`[Deletion] Failed to delete with filter fallback for document ${documentId}: ${filterError}`);
+              throw new Error(`Pinecone vector deletion failed for document ${documentId}: ${pineconeError instanceof Error ? pineconeError.message : String(pineconeError)}`);
+            }
+          }
         }
+      } catch (docError) {
+        console.error(`[Deletion] Error processing document ${documentId} for deletion:`, docError);
       }
     }
     
-    console.log(`Embeddings deletion process completed for documents: ${documentIds.join(', ')}`);
+    console.log(`[Deletion] Embeddings deletion process completed for documents: ${documentIds.join(', ')}`);
     return true;
   } catch (error) {
-    console.error(`Failed to delete embeddings: ${error}`);
+    console.error(`[Deletion] Failed to delete embeddings: ${error}`);
     // Re-throw to allow the calling function to handle the error
     throw error;
+  }
+}
+
+/**
+ * Helper function to delete vectors by filter (legacy approach)
+ * @param documentId - Document ID to include in filter
+ */
+async function deleteByFilter(documentId: string) {
+  const index = pineconeClient.index(process.env.PINECONE_INDEX_NAME!);
+  
+  // Try different filter approaches
+  try {
+    console.log(`[Deletion] Attempting filter deletion with documentId filter for document ${documentId}`);
+    await index.deleteMany({
+      filter: { documentId }
+    });
+    console.log(`[Deletion] Successfully deleted embeddings using documentId filter for document ${documentId}`);
+    return true;
+  } catch (error) {
+    console.error(`[Deletion] First filter attempt failed for document ${documentId}:`, error);
+    
+    // Try with metadata.documentId
+    try {
+      console.log(`[Deletion] Attempting filter deletion with metadata.documentId filter for document ${documentId}`);
+      await index.deleteMany({
+        filter: { "metadata.documentId": documentId }
+      });
+      console.log(`[Deletion] Successfully deleted embeddings using metadata.documentId filter for document ${documentId}`);
+      return true;
+    } catch (metadataError) {
+      console.error(`[Deletion] Second filter attempt failed for document ${documentId}:`, metadataError);
+      throw new Error(`All filter-based deletion attempts failed for document ${documentId}`);
+    }
   }
 }
 
