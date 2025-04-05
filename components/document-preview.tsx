@@ -101,6 +101,7 @@ export function DocumentPreview({
           statusMessage: null,
           totalChunks: null,
           processedChunks: 0,
+          folderPath: null,
           title: artifact.title ?? 'Untitled',
           kind: artifact.kind ?? 'text',
           content: artifact.content ?? ''
