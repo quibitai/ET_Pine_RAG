@@ -16,6 +16,7 @@ import {
   ShareIcon,
   TrashIcon,
 } from '@/components/icons';
+import { ChevronRight, ChevronDown } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -161,6 +162,27 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     fallbackData: [],
   });
 
+  // State for collapsed sections
+  const [collapsedSections, setCollapsedSections] = useState<{
+    yesterday: boolean;
+    lastWeek: boolean;
+    lastMonth: boolean;
+    older: boolean;
+  }>({
+    yesterday: true,
+    lastWeek: true,
+    lastMonth: true,
+    older: true,
+  });
+
+  // Toggle section collapse
+  const toggleSection = (section: keyof typeof collapsedSections) => {
+    setCollapsedSections({
+      ...collapsedSections,
+      [section]: !collapsedSections[section],
+    });
+  };
+
   useEffect(() => {
     mutate();
   }, [pathname, mutate]);
@@ -292,8 +314,8 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                   <>
                     {groupedChats.today.length > 0 && (
                       <>
-                        <div className="px-2 py-1 text-xs text-sidebar-foreground/50">
-                          Today
+                        <div className="px-2 py-1 text-xs text-sidebar-foreground/50 flex items-center cursor-pointer hover:text-sidebar-foreground/70">
+                          <span>Today</span>
                         </div>
                         {groupedChats.today.map((chat) => (
                           <ChatItem
@@ -312,10 +334,18 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
 
                     {groupedChats.yesterday.length > 0 && (
                       <>
-                        <div className="px-2 py-1 text-xs text-sidebar-foreground/50 mt-6">
-                          Yesterday
+                        <div 
+                          className="px-2 py-1 text-xs text-sidebar-foreground/50 mt-6 flex items-center cursor-pointer hover:text-sidebar-foreground/70"
+                          onClick={() => toggleSection('yesterday')}
+                        >
+                          {collapsedSections.yesterday ? (
+                            <ChevronRight className="h-3 w-3 mr-1" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3 mr-1" />
+                          )}
+                          <span>Yesterday</span>
                         </div>
-                        {groupedChats.yesterday.map((chat) => (
+                        {!collapsedSections.yesterday && groupedChats.yesterday.map((chat) => (
                           <ChatItem
                             key={chat.id}
                             chat={chat}
@@ -332,10 +362,18 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
 
                     {groupedChats.lastWeek.length > 0 && (
                       <>
-                        <div className="px-2 py-1 text-xs text-sidebar-foreground/50 mt-6">
-                          Last 7 days
+                        <div 
+                          className="px-2 py-1 text-xs text-sidebar-foreground/50 mt-6 flex items-center cursor-pointer hover:text-sidebar-foreground/70"
+                          onClick={() => toggleSection('lastWeek')}
+                        >
+                          {collapsedSections.lastWeek ? (
+                            <ChevronRight className="h-3 w-3 mr-1" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3 mr-1" />
+                          )}
+                          <span>Last 7 days</span>
                         </div>
-                        {groupedChats.lastWeek.map((chat) => (
+                        {!collapsedSections.lastWeek && groupedChats.lastWeek.map((chat) => (
                           <ChatItem
                             key={chat.id}
                             chat={chat}
@@ -352,10 +390,18 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
 
                     {groupedChats.lastMonth.length > 0 && (
                       <>
-                        <div className="px-2 py-1 text-xs text-sidebar-foreground/50 mt-6">
-                          Last 30 days
+                        <div 
+                          className="px-2 py-1 text-xs text-sidebar-foreground/50 mt-6 flex items-center cursor-pointer hover:text-sidebar-foreground/70"
+                          onClick={() => toggleSection('lastMonth')}
+                        >
+                          {collapsedSections.lastMonth ? (
+                            <ChevronRight className="h-3 w-3 mr-1" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3 mr-1" />
+                          )}
+                          <span>Last 30 days</span>
                         </div>
-                        {groupedChats.lastMonth.map((chat) => (
+                        {!collapsedSections.lastMonth && groupedChats.lastMonth.map((chat) => (
                           <ChatItem
                             key={chat.id}
                             chat={chat}
@@ -372,10 +418,18 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
 
                     {groupedChats.older.length > 0 && (
                       <>
-                        <div className="px-2 py-1 text-xs text-sidebar-foreground/50 mt-6">
-                          Older
+                        <div 
+                          className="px-2 py-1 text-xs text-sidebar-foreground/50 mt-6 flex items-center cursor-pointer hover:text-sidebar-foreground/70"
+                          onClick={() => toggleSection('older')}
+                        >
+                          {collapsedSections.older ? (
+                            <ChevronRight className="h-3 w-3 mr-1" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3 mr-1" />
+                          )}
+                          <span>Older</span>
                         </div>
-                        {groupedChats.older.map((chat) => (
+                        {!collapsedSections.older && groupedChats.older.map((chat) => (
                           <ChatItem
                             key={chat.id}
                             chat={chat}

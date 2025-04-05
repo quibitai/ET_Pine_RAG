@@ -18,6 +18,7 @@ import {
   SheetIcon,
   SparklesIcon,
   Trash2Icon,
+  ArrowLeftIcon,
 } from 'lucide-react';
 import {
   Table,
@@ -333,7 +334,17 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <div>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => router.push('/')}
+            title="Return to chat"
+            className="flex items-center gap-1"
+          >
+            <ArrowLeftIcon className="h-4 w-4" /> 
+            <span>Back to Chat</span>
+          </Button>
           <p className="text-sm text-muted-foreground">
             Manage your knowledge base documents
           </p>
