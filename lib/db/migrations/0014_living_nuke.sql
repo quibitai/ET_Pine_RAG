@@ -1,0 +1,2 @@
+ALTER TABLE "User" DROP COLUMN IF EXISTS "name";
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "password" varchar(64);

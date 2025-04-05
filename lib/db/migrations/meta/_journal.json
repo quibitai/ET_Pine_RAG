@@ -64,6 +64,48 @@
       "when": 1743711381667,
       "tag": "0008_romantic_jackpot",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1743856147592,
+      "tag": "0009_public_red_skull",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1743856225730,
+      "tag": "0010_pale_blizzard",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1743856284957,
+      "tag": "0011_nosy_moira_mactaggert",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1743856641302,
+      "tag": "0012_aspiring_silhouette",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1743859290800,
+      "tag": "0013_striped_revanche",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1743859449494,
+      "tag": "0014_living_nuke",
+      "breakpoints": true
     }
   ]
 }
