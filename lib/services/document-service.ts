@@ -91,74 +91,39 @@ export async function pineconeDeleteEmbeddings(documentIds: string[]): Promise<b
       }
 
       if (vectorIdsToDelete.length > 0) {
-        const index = pineconeClient.index(indexName); // Get index instance
+        const index = pineconeClient.index(indexName);
         if (!index) {
           throw new Error(`Failed to get Pinecone index object for '${indexName}'`);
         }
 
+        // Process in batches to avoid exceeding Pinecone's limits
         const BATCH_SIZE = 1000;
         for (let i = 0; i < vectorIdsToDelete.length; i += BATCH_SIZE) {
           const batchIds = vectorIdsToDelete.slice(i, i + BATCH_SIZE);
-          if (batchIds.length > 0) {
-
-            // --- Start Intensive Debug Logging ---
-            console.log(`\n[Deletion Debug] Preparing batch (start ${i}) for doc ${documentId}`);
-            console.log(`[Deletion Debug] Batch IDs count: ${batchIds.length}`);
-            const defaultNamespace = index.namespace(""); // Get namespace object
-
-            if (!defaultNamespace) {
-              console.error("[Deletion Debug] CRITICAL: Failed to get defaultNamespace object!");
-            } else {
-              console.log(`[Deletion Debug] typeof defaultNamespace: ${typeof defaultNamespace}`);
-              
-              // Safely check for delete property using type assertion to avoid TypeScript errors
-              const nsAny = defaultNamespace as any;
-              console.log(`[Deletion Debug] typeof defaultNamespace.delete: ${typeof nsAny.delete}`);
-              
-              try {
-                // Log available keys/methods for more insight
-                console.log("[Deletion Debug] defaultNamespace keys:", JSON.stringify(Object.keys(defaultNamespace)));
-                // Also check prototype for methods that might not be enumerable
-                console.log("[Deletion Debug] defaultNamespace prototype keys:", JSON.stringify(Object.getOwnPropertyNames(Object.getPrototypeOf(defaultNamespace))));
-              } catch (logError) {
-                console.error("[Deletion Debug] Error inspecting defaultNamespace object:", logError);
-              }
-            }
-            // --- End Intensive Debug Logging ---
-
-            // --- Attempt Deletion Call ---
-            console.log(`[Deletion] Attempting delete on defaultNamespace for batch size ${batchIds.length} (start index ${i})...`);
-            
-            // Use type assertion to access the delete method that TypeScript doesn't recognize
-            const nsAny = defaultNamespace as any;
-            if (!defaultNamespace || typeof nsAny.delete !== 'function') {
-              console.error(`[Deletion Error] defaultNamespace object is invalid or missing delete method before batch ${i}`);
-              // Throw error here to ensure overallSuccess becomes false
-              throw new Error(`Pinecone namespace object invalid or missing delete method for batch ${i}`);
-            }
-            
-            try {
-              // Use type assertion to call delete method
-              await nsAny.delete({ ids: batchIds });
-              console.log(`[Deletion] Batch (start ${i}) deletion call completed successfully.`);
-            } catch (batchDeleteError) {
-              console.error(`[Deletion Error] Failed deleting batch (start ${i}):`, batchDeleteError);
-              // Re-throw error to be caught by the outer try-catch for this documentId
-              throw batchDeleteError;
-            }
-            // --- End Attempt Deletion Call ---
+          if (batchIds.length === 0) continue;
+          
+          console.log(`[Deletion] Deleting batch of ${batchIds.length} vector IDs (starting at index ${i})...`);
+          
+          try {
+            // In Pinecone SDK v5.x, the correct method is deleteMany
+            await index.deleteMany(batchIds);
+            console.log(`[Deletion] Successfully deleted batch of ${batchIds.length} vectors (starting at index ${i})`);
+          } catch (batchError) {
+            console.error(`[Deletion] Error deleting batch (starting at index ${i}):`, batchError);
+            throw batchError; // Re-throw to be caught by outer try-catch
           }
-        } // End Batch Loop
+        }
+        
         console.log(`[Deletion] Completed all batch deletions for document ${documentId}`);
         documentDeletionSuccess = true;
-      } else { // No vector IDs generated
-        documentDeletionSuccess = true;
+      } else {
+        documentDeletionSuccess = true; // No vectors to delete
       }
-    } catch (error) { // Catch errors for this documentId
+    } catch (error) {
       console.error(`[Deletion] Failed during Pinecone deletion process for document ${documentId}:`, error);
       overallSuccess = false; // Mark overall failure
     }
-  } // End Main Document Loop
+  }
 
   console.log(`[Deletion] Pinecone embeddings deletion finished. Overall success status: ${overallSuccess}`);
   return overallSuccess;
