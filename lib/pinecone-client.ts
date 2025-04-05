@@ -15,16 +15,12 @@ console.log(`- PINECONE_ENVIRONMENT: ${ENVIRONMENT}`);
 if (!INDEX_HOST) {
   console.error('⚠️ CRITICAL: PINECONE_INDEX_HOST environment variable is not set');
   console.error('Connection to Pinecone index will likely fail');
-  console.error('Note: While Pinecone SDK v2.x does not use this directly in the client constructor,'); 
-  console.error('it is still required for some operations and diagnostics in your application');
 } else {
   // Check if the host URL is properly formatted
   try {
     const hostUrl = new URL(INDEX_HOST);
     console.log(`- PINECONE_INDEX_HOST: ${INDEX_HOST}`);
     console.log(`- Host validation: Protocol=${hostUrl.protocol}, Domain=${hostUrl.hostname}`);
-    console.log('- Note: Pinecone SDK v2.x does not use this host directly in client initialization');
-    console.log('  but your application may use it for diagnostics or other operations');
     
     // Further validations
     if (!hostUrl.hostname.includes('.svc.')) {
@@ -50,9 +46,6 @@ if (!API_KEY) {
 }
 if (!INDEX_NAME) {
    throw new Error('PINECONE_INDEX_NAME environment variable is not defined.');
-}
-if (!INDEX_HOST) {
-  throw new Error('PINECONE_INDEX_HOST environment variable is not defined. This is required for connecting to your Pinecone index.');
 }
 
 // Configuration constants for timeouts and retries
@@ -202,29 +195,27 @@ async function testPineconeConnection(client: Pinecone, indexName: string): Prom
   }
 }
 
-// --- Initialize Client with API key only ---
-console.log('Initializing Pinecone client with API key only...');
+// --- Initialize Client with API key ---
+console.log('Initializing Pinecone client with API key...');
 let pineconeInstance: Pinecone;
 try {
-  // Initialize ONLY with apiKey - do not include host property
+  // Initialize with apiKey and optional server configuration in v5.x
   pineconeInstance = new Pinecone({
-    apiKey: API_KEY
-    // DO NOT pass host: INDEX_HOST here - it causes validation errors in Pinecone client v2.x
+    apiKey: API_KEY,
+    // In v5.x, you can optionally include server configuration
+    ...(INDEX_HOST ? { serverlessHost: INDEX_HOST } : {})
   });
   
   // Test connection right after initialization
-  // Use top-level await or wrap in an IIFE
   (async () => {
     try {
       if (INDEX_NAME) {
-        console.log(`Testing connection to Pinecone index '${INDEX_NAME}' at host '${INDEX_HOST}'...`);
+        console.log(`Testing connection to Pinecone index '${INDEX_NAME}'...`);
         const connectionSuccessful = await testPineconeConnection(pineconeInstance, INDEX_NAME);
         if (connectionSuccessful) {
           console.log('✅ Pinecone connection test SUCCESSFUL');
         } else {
-          console.error('⚠️ Pinecone connection test FAILED - check your API key, index name, and host URL');
-          console.log('Note: The host URL is required in your environment variables but NOT used in client initialization');
-          console.log('Pinecone SDK v2.x automatically discovers the correct host based on index name');
+          console.error('⚠️ Pinecone connection test FAILED - check your API key and index name');
         }
       }
     } catch (error) {
@@ -249,8 +240,14 @@ export const getPineconeIndex = () => {
   if (!INDEX_NAME) {
      throw new Error('PINECONE_INDEX_NAME is missing, cannot get index.');
   }
-  console.log(`Getting Pinecone index: ${INDEX_NAME}`);
-  return pineconeClient.index(INDEX_NAME);
+  
+  try {
+     const index = pineconeClient.index(INDEX_NAME);
+     return index;
+  } catch (e) {
+     console.error(`Error getting Pinecone index "${INDEX_NAME}":`, e);
+     throw e;
+  }
 };
 
 /**
