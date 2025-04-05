@@ -2,17 +2,22 @@
 
 A Retrieval Augmented Generation (RAG) powered chatbot built with Next.js, Google AI SDK, Pinecone, and Vercel Blob storage.
 
-## Latest Release - v1.1
+## Latest Release - v1.5.0
 
-* Fixed UUID validation in attachment processing to prevent database errors
-* Improved document ID extraction for file attachments
-* Enhanced error handling and logging for attachment content type detection
+* Enhanced chat API to intelligently handle generic queries after file uploads
+* Improved DOCX file handling by checking file extension in addition to MIME type
+* Extended file upload support for all document formats
+* Fixed user authentication by restoring password field in User schema
+* Corrected RAG worker import path for generateEmbeddings
+* Updated file upload dialog to show all supported file formats
 
 [View all releases](https://github.com/quibitai/ET_Pine_RAG/releases)
 
 ## Features
 
-- **PDF, TXT, and DOCX document upload** with Google Document AI processing
+- **Document upload and processing** for PDF, DOCX, TXT, CSV, XLSX, and Markdown files
+- **Intelligent document handling** with automatic format detection
+- **Smart conversation context** that understands when queries refer to uploaded documents
 - **Vector storage with Pinecone** for semantic search
 - **LLM-powered chat** with document context retrieval and source attribution
 - **Multiple AI models** including Google Gemini and OpenAI
@@ -33,7 +38,7 @@ A Retrieval Augmented Generation (RAG) powered chatbot built with Next.js, Googl
 - **Vercel Blob Storage** for file uploads
 - **QStash** for background processing
 - **Drizzle ORM** with PostgreSQL
-- **Replicate API** for embeddings
+- **OpenAI Embeddings** for vector representations
 
 ## Deployment to Vercel
 
@@ -57,18 +62,19 @@ When deploying to Vercel, you need to set up the following environment variables
 ```
 # API Keys
 GOOGLE_API_KEY=your_google_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
 GOOGLE_CREDENTIALS_JSON=your_service_account_json
 GOOGLE_PROJECT_ID=your_google_project_id
 DOCUMENT_AI_PROCESSOR_ID=your_document_ai_processor_id
 DOCUMENT_AI_LOCATION=your_document_ai_location
 PINECONE_API_KEY=your_pinecone_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here (optional)
-OPENAI_API_KEY=your_openai_api_key_here (optional)
-REPLICATE_API_TOKEN=your_replicate_api_token_here
 
 # QStash for background processing
 QSTASH_CURRENT_SIGNING_KEY=your_qstash_current_signing_key
 QSTASH_NEXT_SIGNING_KEY=your_qstash_next_signing_key
+QSTASH_TOKEN=your_qstash_token
+QSTASH_WORKER_URL=your_app_url/api/rag-worker
 
 # Pinecone Configuration
 PINECONE_INDEX_NAME=your_index_name
@@ -138,8 +144,9 @@ The application uses Google Document AI for text extraction from various documen
 
 1. Uploads files to Vercel Blob storage
 2. Processes them with Google Document AI in the background using QStash
-3. Chunks the extracted text and generates embeddings
-4. Stores the vectors in Pinecone for semantic search
+3. Handles multiple document formats including PDF, DOCX, TXT, CSV, XLSX, and Markdown
+4. Chunks the extracted text and generates embeddings using OpenAI's text-embedding-3-large model
+5. Stores the vectors in Pinecone for semantic search
 
 ### Conversational AI
 
@@ -148,8 +155,9 @@ The chat interface supports:
 1. Multiple AI models (Google Gemini and OpenAI GPT)
 2. Real-time web search via Tavily
 3. Document context retrieval from your uploaded files
-4. Source attribution for information from documents
-5. File attachments with proper content type handling
+4. Smart handling of generic queries about uploaded documents
+5. Source attribution for information from documents
+6. File attachments with proper content type handling
 
 ### Background Processing
 
@@ -166,7 +174,9 @@ Document processing is handled in the background:
 - **Database Connection**: Verify your Postgres connection string is correct
 - **Pinecone Configuration**: Make sure you've provided either `PINECONE_ENVIRONMENT` or `PINECONE_INDEX_HOST`
 - **QStash Errors**: Check that your signing keys are correctly configured
-- **Document AI**: Verify your service account has the Document AI API User role
+- **DOCX Handling Issues**: If DOCX files aren't processing correctly, check browser logs for MIME type errors
+- **Document AI**: Verify your service account has the Document AI API User role and processor ID is correct
+- **Embedding Generation**: Confirm your OpenAI API key is valid and has enough quota
 - **RAG Processing**: Monitor logs for errors in document processing or embedding generation
 - **Attachment Content Types**: If attachments aren't displaying correctly, check the logs for content type detection
 
