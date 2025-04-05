@@ -51,9 +51,8 @@ Before deploying this application, you'll need:
 3. A Google Cloud account with Document AI set up
 4. A QStash account for background processing
 5. A Google AI API key for Gemini models
-6. A Replicate account for embeddings
+6. An OpenAI API key for embeddings and optional GPT models
 7. A Tavily API key for web search (optional)
-8. An OpenAI API key for GPT models (optional)
 
 ### Environment Variables
 
