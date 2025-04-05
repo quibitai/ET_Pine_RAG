@@ -728,12 +728,12 @@ ${contextInstructions}`;
           messages: messagesForAI, // Use filtered messages instead of original messages
           maxSteps: 5,
           experimental_activeTools: [
-            'getWeather',
-            'createDocument',
-            'updateDocument',
-            'requestSuggestions',
+                  'getWeather',
+                  'createDocument',
+                  'updateDocument',
+                  'requestSuggestions',
             'tavilySearch',
-          ],
+                ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
           tools: {
