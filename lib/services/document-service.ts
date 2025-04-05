@@ -78,34 +78,72 @@ export async function pineconeDeleteEmbeddings(documentIds: string[]): Promise<b
 
   for (const documentId of documentIds) {
     try {
-      console.log(`[Deletion] Deleting vectors for document ${documentId} using filter...`);
-      
-      // Use deleteAll method without arguments, or try namespace filtering
-      // Based on Pinecone SDK v2.2.2 documentation
-      try {
-        // Try first with metadata filtering if supported
-        await index.deleteMany({
-          filter: {
-            documentId: { $eq: documentId }
-          }
-        });
-        console.log(`[Deletion] Successfully deleted vectors for document ${documentId} using metadata filter`);
-      } catch (filterError) {
-        console.warn(`[Deletion] Metadata filter deletion failed: ${filterError}. Trying namespace approach...`);
+      // 1. Get document metadata for totalChunks
+      const document = await getDocumentById({ id: documentId });
+      if (!document) {
+        console.warn(`[Deletion] Document ${documentId} not found in DB. Skipping Pinecone deletion for this ID.`);
+        continue; // Move to the next document ID
+      }
+
+      const totalChunks = document.totalChunks;
+
+      // 2. Generate vector IDs
+      let vectorIdsToDelete: string[] = [];
+      if (totalChunks && totalChunks > 0) {
+        vectorIdsToDelete = Array.from({ length: totalChunks }, (_, i) => `${documentId}_chunk_${i}`);
+        console.log(`[Deletion] Generated ${vectorIdsToDelete.length} vector IDs for document ${documentId}`);
+      } else {
+        console.warn(`[Deletion] Document ${documentId} has totalChunks=${totalChunks}. Cannot determine vector IDs.`);
         
-        // Try namespace-based deletion as fallback
-        // This assumes vectors were stored in a namespace named after the documentId
+        // Try using metadata filtering as a fallback
         try {
-          await index.namespace(documentId).deleteAll();
-          console.log(`[Deletion] Successfully deleted vectors for document ${documentId} using namespace deletion`);
-        } catch (namespaceError) {
-          console.error(`[Deletion] Namespace deletion also failed: ${namespaceError}`);
-          throw new Error(`Could not delete vectors for document ${documentId}: ${namespaceError}`);
+          console.log(`[Deletion] Attempting deletion via metadata filter for document ${documentId}...`);
+          await index.deleteMany({
+            filter: {
+              documentId: { $eq: documentId }
+            }
+          });
+          console.log(`[Deletion] Successfully deleted vectors for document ${documentId} using metadata filter`);
+          continue; // Move to the next document ID
+        } catch (filterError) {
+          console.error(`[Deletion] Metadata filter deletion failed: ${filterError}`);
+          overallSuccess = false;
+          continue; // Move to the next document ID
         }
       }
+
+      // 3. Delete vectors by ID using batching
+      if (vectorIdsToDelete.length > 0) {
+        console.log(`[Deletion] Attempting to delete ${vectorIdsToDelete.length} vectors by ID from Pinecone for doc ${documentId}...`);
+        const BATCH_SIZE = 1000; // Pinecone's typical limit
+        
+        for (let i = 0; i < vectorIdsToDelete.length; i += BATCH_SIZE) {
+          const batchIds = vectorIdsToDelete.slice(i, i + BATCH_SIZE);
+          if (batchIds.length > 0) {
+            console.log(`[Deletion] Deleting batch of ${batchIds.length} vector IDs (starting index ${i}) from default namespace...`);
+            
+            try {
+              // Use the index's default namespace (which is where vectors are stored)
+              // Cast to any to avoid TypeScript errors while preserving the proper method call
+              // This approach avoids potential issues with missing delete method on the index object
+              const defaultNamespace = index.namespace("");
+              
+              // Utilize TypeScript's 'as any' to bypass type checking for the delete method
+              await (defaultNamespace as any).delete({ ids: batchIds });
+              
+              console.log(`[Deletion] Successfully deleted batch of ${batchIds.length} vectors from default namespace`);
+            } catch (batchError) {
+              console.error(`[Deletion] Error deleting batch from default namespace: ${batchError}`);
+              overallSuccess = false;
+            }
+          }
+        }
+        console.log(`[Deletion] Completed Pinecone vector deletion process for document ${documentId}`);
+      }
     } catch (error) {
-      console.error(`[Deletion] Failed to delete vectors for document ${documentId}:`, error);
+      console.error(`[Deletion] Failed during Pinecone deletion process for document ${documentId}:`, error);
       overallSuccess = false;
+      // Continue to the next documentId even if one fails
     }
   }
 
