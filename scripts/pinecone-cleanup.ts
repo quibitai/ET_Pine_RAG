@@ -62,9 +62,11 @@ const initPinecone = () => {
       apiKey: process.env.PINECONE_API_KEY!
     };
 
-    // Add serverless host if provided
+    // Add host URL if provided - using correct parameter name
     if (process.env.PINECONE_INDEX_HOST) {
-      clientConfig.serverlessHost = process.env.PINECONE_INDEX_HOST;
+      // Updated from 'serverlessHost' to 'controllerHostUrl' based on error message
+      clientConfig.controllerHostUrl = process.env.PINECONE_INDEX_HOST;
+      console.log(`Using host URL: ${process.env.PINECONE_INDEX_HOST}`);
     }
 
     // Initialize client
