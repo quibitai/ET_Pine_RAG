@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/app/(auth)/auth';
 import { 
   getDocumentDetails, 
@@ -9,43 +9,39 @@ import {
 
 /**
  * GET /api/documents/[id]
- * Retrieve a document by ID
+ * Get details for a specific document
  */
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const documentId = params.id;
-  
   try {
-    // Authenticate user
     const session = await auth();
-    const userId = session?.user?.id;
-    
-    if (!userId) {
+    const user = session?.user;
+
+    if (!user || !user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { id } = params;
+    console.info(`Fetching document details for document ${id}`);
     
-    // Get document details
-    const document = await getDocumentDetails(documentId);
+    const document = await getDocumentDetails(id);
     
     if (!document) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
     
-    // Check if user owns document
-    if (document.userId !== userId) {
+    // Check document ownership
+    if (document.userId !== user.id) {
       return NextResponse.json({ error: 'Unauthorized access to document' }, { status: 403 });
     }
     
-    // Get detailed progress information
-    const documentWithProgress = await getDocumentProgress(documentId);
-    
-    return NextResponse.json(documentWithProgress);
+    return NextResponse.json({ document });
   } catch (error) {
-    console.error(`Error retrieving document ${documentId}:`, error);
+    console.error('Error fetching document details:', error);
     return NextResponse.json(
-      { error: 'Failed to retrieve document', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch document details' },
       { status: 500 }
     );
   }
@@ -56,38 +52,30 @@ export async function GET(
  * Delete a document and its associated data
  */
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const documentId = params.id;
-  
   try {
-    // Authenticate user
     const session = await auth();
-    const userId = session?.user?.id;
-    
-    if (!userId) {
+    const user = session?.user;
+
+    if (!user || !user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { id } = params;
+    console.info(`Deleting document ${id}`);
     
-    // Delete document
-    await deleteDocument(documentId, userId);
+    await deleteDocument(id, user.id);
     
-    return NextResponse.json({ success: true, message: 'Document deleted successfully' });
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error(`Error deleting document ${documentId}:`, error);
-    
-    if (error instanceof Error && 
-       (error.message.includes('not found') || error.message.includes('Document not found'))) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
-    }
-    
-    if (error instanceof Error && error.message.includes('Unauthorized access')) {
-      return NextResponse.json({ error: 'Unauthorized access to document' }, { status: 403 });
-    }
-    
+    console.error('Error deleting document:', error);
     return NextResponse.json(
-      { error: 'Failed to delete document', details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Failed to delete document',
+        message: error instanceof Error ? error.message : 'Unknown error' 
+      },
       { status: 500 }
     );
   }
@@ -95,52 +83,41 @@ export async function DELETE(
 
 /**
  * POST /api/documents/[id]
- * Retry processing a failed document
+ * Retry processing a document
  */
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const documentId = params.id;
-  
   try {
-    // Get request body
-    const body = await request.json();
-    const { action } = body;
-    
-    // Authenticate user
     const session = await auth();
-    const userId = session?.user?.id;
-    
-    if (!userId) {
+    const user = session?.user;
+
+    if (!user || !user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { id } = params;
+    const body = await request.json();
     
-    // Handle different actions
-    if (action === 'retry') {
-      await retryDocumentProcessing(documentId, userId);
-      return NextResponse.json({ success: true, message: 'Document processing requeued' });
-    } else {
-      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    if (body.action !== 'retry') {
+      return NextResponse.json(
+        { error: 'Invalid action. Only "retry" is supported.' },
+        { status: 400 }
+      );
     }
+    
+    console.info(`Retrying processing for document ${id}`);
+    await retryDocumentProcessing(id, user.id);
+    
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error(`Error processing document action for ${documentId}:`, error);
-    
-    if (error instanceof Error && 
-       (error.message.includes('not found') || error.message.includes('Document not found'))) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
-    }
-    
-    if (error instanceof Error && error.message.includes('Unauthorized access')) {
-      return NextResponse.json({ error: 'Unauthorized access to document' }, { status: 403 });
-    }
-    
-    if (error instanceof Error && error.message.includes('not in a failed state')) {
-      return NextResponse.json({ error: 'Document is not in a failed state', details: error.message }, { status: 400 });
-    }
-    
+    console.error('Error retrying document processing:', error);
     return NextResponse.json(
-      { error: 'Failed to process document action', details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Failed to retry document processing',
+        message: error instanceof Error ? error.message : 'Unknown error' 
+      },
       { status: 500 }
     );
   }

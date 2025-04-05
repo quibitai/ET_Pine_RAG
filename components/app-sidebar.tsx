@@ -2,8 +2,9 @@
 
 import type { User } from 'next-auth';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
-import { PlusIcon } from '@/components/icons';
+import { FileTextIcon, PlusIcon } from '@/components/icons';
 import { SidebarHistory } from '@/components/sidebar-history';
 import { SidebarUserNav } from '@/components/sidebar-user-nav';
 import { Button } from '@/components/ui/button';
@@ -15,12 +16,17 @@ import {
   SidebarMenu,
   useSidebar,
 } from '@/components/ui/sidebar';
-import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 export function AppSidebar({ user }: { user: User | undefined }) {
   const router = useRouter();
   const { setOpenMobile } = useSidebar();
+
+  const handleNewChat = () => {
+    setOpenMobile(false);
+    router.push('/');
+    router.refresh();
+  };
 
   return (
     <Sidebar className="group-data-[side=left]:border-r-0">
@@ -38,23 +44,37 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                 Chatbot
               </span>
             </Link>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  className="p-2 h-fit"
-                  onClick={() => {
-                    setOpenMobile(false);
-                    router.push('/');
-                    router.refresh();
-                  }}
-                >
-                  <PlusIcon />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent align="end">New Chat</TooltipContent>
-            </Tooltip>
+            <div className="flex">
+              <Link href="/knowledge-base" legacyBehavior passHref>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      as="a"
+                      variant="ghost"
+                      className="p-2 h-fit"
+                      onClick={() => setOpenMobile(false)}
+                    >
+                      <FileTextIcon />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent align="end">Knowledge Base</TooltipContent>
+                </Tooltip>
+              </Link>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    className="p-2 h-fit"
+                    onClick={handleNewChat}
+                  >
+                    <PlusIcon />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent align="end">New Chat</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
         </SidebarMenu>
       </SidebarHeader>
