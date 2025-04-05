@@ -465,14 +465,24 @@ export async function processFileForRag({
       });
       try {
         const csvString = nodeBuffer.toString('utf-8');
-        const result = Papa.parse(csvString, { header: true, skipEmptyLines: true });
+        const result = Papa.parse(csvString, { header: false, skipEmptyLines: true });
         if (result.errors && result.errors.length > 0) {
           console.warn('[RAG Processor] CSV parsing errors encountered:', result.errors);
         }
         // Convert parsed data to a simple textual representation for RAG
-        extractedText = result.data.map((row: any, index: number) => {
-          return `Row ${index + 1}: ${Object.entries(row).map(([key, value]) => `${key} is "${value}"`).join(', ')}`;
-        }).join('\n');
+        // result.data is now string[][]
+        extractedText = (result.data as string[][]).map((row: string[], rowIndex: number) => {
+          // Skip potential empty rows parsed if skipEmptyLines didn't catch them
+          if (row.every(cell => cell === null || cell === undefined || cell.trim() === '')) {
+            return null; // Will be filtered out later
+          }
+          // Describe each cell in the row using its column index
+          const rowDescription = row.map((cellValue: string, colIndex: number) => {
+            const valueString = cellValue === null || cellValue === undefined ? 'EMPTY' : `"${cellValue}"`;
+            return `Column ${colIndex + 1}: ${valueString}`;
+          }).join(', ');
+          return `Row ${rowIndex + 1}: ${rowDescription}`;
+        }).filter(rowString => rowString !== null).join('\n'); // Filter out null rows before joining
       } catch (csvError) {
         console.error('[RAG Processor] Error extracting CSV:', csvError);
         throw new Error(`Failed to extract text from CSV: ${csvError instanceof Error ? csvError.message : String(csvError)}`);
