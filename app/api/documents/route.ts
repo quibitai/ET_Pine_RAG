@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/app/(auth)/auth';
 import { getAllUserDocuments } from '@/lib/services/document-service';
 
+// Ensure this API route is always dynamically rendered
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/documents
  * Retrieve all documents for the authenticated user

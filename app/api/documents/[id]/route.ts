@@ -7,6 +7,9 @@ import {
   getDocumentProgress
 } from '@/lib/services/document-service';
 
+// Ensure this API route is always dynamically rendered
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/documents/[id]
  * Get details for a specific document
