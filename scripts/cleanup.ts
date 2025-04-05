@@ -3,7 +3,7 @@
  * 
  * This script completely cleans up all documents in the knowledge base system:
  * 1. Deletes all document records from the Neon database
- * 2. Deletes all vector embeddings from Pinecone
+ * 2. Deletes all vector embeddings from Pinecone (if configured)
  * 3. Deletes all document files from Vercel Blob storage
  * 
  * CAUTION: This will permanently delete ALL documents and cannot be undone!
@@ -13,15 +13,56 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { documents } from '@/lib/db/schema';
 import postgres from 'postgres';
 import { del } from '@vercel/blob';
-import { pineconeClient } from '@/lib/pinecone-client';
 import dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// Load environment variables
-dotenv.config({ path: '.env.local' });
+// Load environment variables - try multiple paths to ensure variables are loaded
+try {
+  // Try different potential .env file locations
+  const envPaths = [
+    '.env.local',
+    '.env',
+    path.join(process.cwd(), '.env.local'),
+    path.join(process.cwd(), '.env'),
+  ];
+  
+  for (const envPath of envPaths) {
+    if (fs.existsSync(envPath)) {
+      console.log(`Loading environment variables from ${envPath}`);
+      dotenv.config({ path: envPath });
+      break;
+    }
+  }
+} catch (error) {
+  console.warn('Warning: Failed to load .env file:', error);
+}
+
+// Validate required environment variables for database
+if (!process.env.POSTGRES_URL) {
+  throw new Error('POSTGRES_URL environment variable is required');
+}
 
 // Initialize database client
-const client = postgres(process.env.POSTGRES_URL!);
+const client = postgres(process.env.POSTGRES_URL);
 const db = drizzle(client);
+
+// Check if Pinecone is properly configured
+const isPineconeConfigured = () => {
+  const hasPineconeConfig = 
+    !!process.env.PINECONE_API_KEY && 
+    !!process.env.PINECONE_INDEX_NAME;
+  
+  if (!hasPineconeConfig) {
+    console.warn('\n⚠️ WARNING: Pinecone environment variables are missing:');
+    console.warn('- PINECONE_API_KEY present:', !!process.env.PINECONE_API_KEY);
+    console.warn('- PINECONE_INDEX_NAME:', process.env.PINECONE_INDEX_NAME);
+    console.warn('- PINECONE_INDEX_HOST:', process.env.PINECONE_INDEX_HOST);
+    console.warn('Vector embeddings will NOT be deleted from Pinecone.\n');
+  }
+  
+  return hasPineconeConfig;
+};
 
 // Main cleanup function
 async function cleanupKnowledgeBase() {
@@ -40,59 +81,71 @@ async function cleanupKnowledgeBase() {
       return;
     }
 
-    // Step 2: Delete all vector embeddings from Pinecone
-    console.log('\n🧠 Deleting all vector embeddings from Pinecone...');
-    const documentIds = allDocuments.map(doc => doc.id);
-    
-    // Verify Pinecone connection and index
-    if (!process.env.PINECONE_INDEX_NAME) {
-      throw new Error('PINECONE_INDEX_NAME is not defined in environment variables');
-    }
-    
-    const indexName = process.env.PINECONE_INDEX_NAME;
-    const index = pineconeClient.index(indexName);
-    
-    // Delete vectors in Pinecone for each document
-    let pineconeDeleteSuccess = true;
+    // Step 2: Delete all vector embeddings from Pinecone (if configured)
+    let pineconeDeleteSuccess = false;
     let totalVectorsDeleted = 0;
     
-    for (const doc of allDocuments) {
-      const documentId = doc.id;
-      const totalChunks = doc.totalChunks || 0;
+    if (isPineconeConfigured()) {
+      console.log('\n🧠 Deleting all vector embeddings from Pinecone...');
       
-      if (totalChunks > 0) {
-        try {
-          const vectorIds = Array.from(
-            { length: totalChunks }, 
-            (_, i) => `${documentId}_chunk_${i}`
-          );
+      try {
+        // Import Pinecone client only if configured to avoid errors
+        const { pineconeClient } = await import('@/lib/pinecone-client');
+        const indexName = process.env.PINECONE_INDEX_NAME!;
+        const index = pineconeClient.index(indexName);
+        
+        // Delete vectors in Pinecone for each document
+        pineconeDeleteSuccess = true;
+        
+        for (const doc of allDocuments) {
+          const documentId = doc.id;
+          const totalChunks = doc.totalChunks || 0;
           
-          // Process in batches to avoid Pinecone limits
-          const BATCH_SIZE = 1000;
-          for (let i = 0; i < vectorIds.length; i += BATCH_SIZE) {
-            const batchIds = vectorIds.slice(i, i + BATCH_SIZE);
-            if (batchIds.length === 0) continue;
-            
-            console.log(`Deleting batch of ${batchIds.length} vectors for document ${documentId}...`);
-            await index.deleteMany(batchIds);
-            totalVectorsDeleted += batchIds.length;
+          if (totalChunks > 0) {
+            try {
+              const vectorIds = Array.from(
+                { length: totalChunks }, 
+                (_, i) => `${documentId}_chunk_${i}`
+              );
+              
+              // Process in batches to avoid Pinecone limits
+              const BATCH_SIZE = 1000;
+              for (let i = 0; i < vectorIds.length; i += BATCH_SIZE) {
+                const batchIds = vectorIds.slice(i, i + BATCH_SIZE);
+                if (batchIds.length === 0) continue;
+                
+                console.log(`Deleting batch of ${batchIds.length} vectors for document ${documentId}...`);
+                await index.deleteMany(batchIds);
+                totalVectorsDeleted += batchIds.length;
+              }
+              
+              console.log(`✅ Successfully deleted all ${totalChunks} vectors for document: ${doc.fileName}`);
+            } catch (error) {
+              console.error(`❌ Failed to delete vectors for document ${documentId}:`, error);
+              pineconeDeleteSuccess = false;
+            }
+          } else {
+            console.log(`⚠️ Document ${doc.fileName} has no chunks (totalChunks: ${totalChunks})`);
           }
-          
-          console.log(`✅ Successfully deleted all ${totalChunks} vectors for document: ${doc.fileName}`);
-        } catch (error) {
-          console.error(`❌ Failed to delete vectors for document ${documentId}:`, error);
-          pineconeDeleteSuccess = false;
         }
-      } else {
-        console.log(`⚠️ Document ${doc.fileName} has no chunks (totalChunks: ${totalChunks})`);
+        
+        console.log(`Pinecone deletion ${pineconeDeleteSuccess ? 'completed successfully' : 'had some failures'}`);
+        console.log(`Total vectors deleted: ${totalVectorsDeleted}`);
+      } catch (error) {
+        console.error('\n❌ Error accessing Pinecone:', error);
+        console.warn('Skipping Pinecone cleanup due to errors, but continuing with other cleanup tasks...\n');
       }
+    } else {
+      console.log('\n🧠 Skipping Pinecone vector deletion due to missing configuration');
     }
-    
-    console.log(`Pinecone deletion ${pineconeDeleteSuccess ? 'completed successfully' : 'had some failures'}`);
-    console.log(`Total vectors deleted: ${totalVectorsDeleted}`);
     
     // Step 3: Delete all files from Vercel Blob storage
     console.log('\n🗑️  Deleting all files from Vercel Blob storage...');
+    
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      console.warn('⚠️ BLOB_READ_WRITE_TOKEN is missing. Blob storage files may not be deleted properly.');
+    }
+    
     let blobDeleteSuccess = true;
     let blobsDeleted = 0;
     
@@ -124,7 +177,7 @@ async function cleanupKnowledgeBase() {
     console.log('🎉 Knowledge base cleanup completed!');
     console.log(`📊 Summary:
 - Database records deleted: ${deleted.length}
-- Vector embeddings deleted: ${totalVectorsDeleted} 
+- Pinecone vectors deleted: ${isPineconeConfigured() ? totalVectorsDeleted : 'SKIPPED - not configured'}
 - Blob storage files deleted: ${blobsDeleted}
     `);
     
