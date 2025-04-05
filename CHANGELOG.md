@@ -12,6 +12,7 @@ All notable changes to the ET Pine RAG project will be documented in this file.
 - Replaced Gemini 2.5 Pro Exp model with EchoTango Bit
 - Updated all model-related infrastructure to support multiple personas with the same base model
 - Standardized on OpenAI models for all AI functions
+- Set EchoTango Bit as the default assistant persona upon sign-in
 
 ## [1.7.0] - 2024-06-20
 
