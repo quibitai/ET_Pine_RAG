@@ -53,7 +53,7 @@ export type DocumentWithProgress = {
  */
 export async function pineconeDeleteEmbeddings(documentIds: string[]): Promise<boolean> {
   let overallSuccess = true; // Assume success initially
-
+  
   if (!process.env.PINECONE_INDEX_NAME) {
     console.error('[Deletion] PINECONE_INDEX_NAME is not defined');
     return false; // Cannot proceed without index name
@@ -77,6 +77,7 @@ export async function pineconeDeleteEmbeddings(documentIds: string[]): Promise<b
   }
 
   for (const documentId of documentIds) {
+    let documentDeletionSuccess = false; // Track success for this specific document
     try {
       // 1. Get document metadata for totalChunks
       const document = await getDocumentById({ id: documentId });
@@ -114,6 +115,49 @@ export async function pineconeDeleteEmbeddings(documentIds: string[]): Promise<b
 
       // 3. Delete vectors by ID using batching
       if (vectorIdsToDelete.length > 0) {
+        const index = pineconeClient.index(indexName); // Ensure we have the index object
+
+        // --- Start Debug Logging ---
+        console.log(`[Deletion Debug] Preparing to delete ${vectorIdsToDelete.length} vectors for doc ${documentId}`);
+        if (!index) {
+            console.error("[Deletion Debug] CRITICAL: Failed to get Pinecone index object!");
+        } else {
+            console.log("[Deletion Debug] Inspecting 'index' object...");
+            console.log(`[Deletion Debug] typeof index: ${typeof index}`);
+            console.log(`[Deletion Debug] typeof index.delete: ${typeof index.delete}`); // Check if delete method exists
+            try {
+                // Log available keys/methods for more insight
+                console.log("[Deletion Debug] index keys:", Object.keys(index));
+                console.log("[Deletion Debug] index prototype keys:", Object.getOwnPropertyNames(Object.getPrototypeOf(index)));
+            } catch (logError) {
+                console.error("[Deletion Debug] Error inspecting index object:", logError);
+            }
+        }
+        // --- End Debug Logging ---
+
+        // --- Start Temporary Direct Delete Test ---
+        console.log(`[Deletion Debug] Attempting SINGLE direct delete call with index.delete...`);
+        try {
+            if (!index || typeof index.delete !== 'function') {
+                console.error("[Deletion Debug] index object is invalid or missing delete method before direct call.");
+                throw new Error("Invalid index object for direct delete attempt");
+            }
+            // Attempt direct call with first batch (or max 1000)
+            const idsForDirectCall = vectorIdsToDelete.slice(0, 1000);
+            await index.delete({ ids: idsForDirectCall });
+            console.log(`[Deletion Debug] Direct index.delete call using ${idsForDirectCall.length} IDs completed without TypeError.`);
+            documentDeletionSuccess = true; // Assume success for this test if no error
+        } catch (directDeleteError) {
+            console.error(`[Deletion Debug] Direct index.delete call FAILED:`, directDeleteError);
+            overallSuccess = false; // Mark overall failure
+            // Re-throw the error to stop further processing for this doc in this debug step
+            throw directDeleteError;
+        }
+        // --- End Temporary Direct Delete Test ---
+
+
+        // --- Temporarily Comment Out Batching Loop ---
+        /*
         console.log(`[Deletion] Attempting to delete ${vectorIdsToDelete.length} vectors by ID from Pinecone for doc ${documentId}...`);
         const BATCH_SIZE = 1000; // Pinecone's typical limit
         
@@ -139,6 +183,10 @@ export async function pineconeDeleteEmbeddings(documentIds: string[]): Promise<b
           }
         }
         console.log(`[Deletion] Completed Pinecone vector deletion process for document ${documentId}`);
+        */
+        // --- End Temporarily Comment Out Batching Loop ---
+      } else {
+         documentDeletionSuccess = true; // No vectors needed deletion
       }
     } catch (error) {
       console.error(`[Deletion] Failed during Pinecone deletion process for document ${documentId}:`, error);
