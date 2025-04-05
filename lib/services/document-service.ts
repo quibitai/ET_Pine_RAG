@@ -110,7 +110,11 @@ export async function pineconeDeleteEmbeddings(documentIds: string[]): Promise<b
               console.error("[Deletion Debug] CRITICAL: Failed to get defaultNamespace object!");
             } else {
               console.log(`[Deletion Debug] typeof defaultNamespace: ${typeof defaultNamespace}`);
-              console.log(`[Deletion Debug] typeof defaultNamespace.delete: ${typeof defaultNamespace.delete}`);
+              
+              // Safely check for delete property using type assertion to avoid TypeScript errors
+              const nsAny = defaultNamespace as any;
+              console.log(`[Deletion Debug] typeof defaultNamespace.delete: ${typeof nsAny.delete}`);
+              
               try {
                 // Log available keys/methods for more insight
                 console.log("[Deletion Debug] defaultNamespace keys:", JSON.stringify(Object.keys(defaultNamespace)));
@@ -124,14 +128,18 @@ export async function pineconeDeleteEmbeddings(documentIds: string[]): Promise<b
 
             // --- Attempt Deletion Call ---
             console.log(`[Deletion] Attempting delete on defaultNamespace for batch size ${batchIds.length} (start index ${i})...`);
-            if (!defaultNamespace || typeof defaultNamespace.delete !== 'function') {
+            
+            // Use type assertion to access the delete method that TypeScript doesn't recognize
+            const nsAny = defaultNamespace as any;
+            if (!defaultNamespace || typeof nsAny.delete !== 'function') {
               console.error(`[Deletion Error] defaultNamespace object is invalid or missing delete method before batch ${i}`);
               // Throw error here to ensure overallSuccess becomes false
               throw new Error(`Pinecone namespace object invalid or missing delete method for batch ${i}`);
             }
+            
             try {
-              // *** Call delete on the namespace object - NO 'as any' ***
-              await defaultNamespace.delete({ ids: batchIds });
+              // Use type assertion to call delete method
+              await nsAny.delete({ ids: batchIds });
               console.log(`[Deletion] Batch (start ${i}) deletion call completed successfully.`);
             } catch (batchDeleteError) {
               console.error(`[Deletion Error] Failed deleting batch (start ${i}):`, batchDeleteError);
