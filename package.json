@@ -20,6 +20,7 @@
     "cleanup:kb": "npx tsx scripts/cleanup.ts",
     "cleanup:pinecone": "npx tsx scripts/pinecone-cleanup.ts",
     "pinecone:list": "npx tsx scripts/pinecone-list-indexes.ts",
+    "pinecone:test-delete": "npx tsx scripts/pinecone-test-delete.ts",
     "test": "export PLAYWRIGHT=True && pnpm exec playwright test --workers=4"
   },
   "dependencies": {
