@@ -18,6 +18,7 @@
     "db:up": "drizzle-kit up",
     "setup:blob": "node scripts/setup-blob-store.js",
     "cleanup:kb": "npx tsx scripts/cleanup.ts",
+    "cleanup:pinecone": "npx tsx scripts/pinecone-cleanup.ts",
     "test": "export PLAYWRIGHT=True && pnpm exec playwright test --workers=4"
   },
   "dependencies": {
