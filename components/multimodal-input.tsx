@@ -214,7 +214,7 @@ function PureMultimodalInput({
         className="fixed -top-4 -left-4 size-0.5 opacity-0 pointer-events-none"
         ref={fileInputRef}
         multiple
-        accept=".jpeg,.jpg,.png,.pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept=".jpeg,.jpg,.png,.gif,.webp,.pdf,.txt,.docx,.doc,.xlsx,.xls,.csv,.md,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/markdown,image/jpeg,image/png,image/gif,image/webp"
         onChange={handleFileChange}
         tabIndex={-1}
       />
