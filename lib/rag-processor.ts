@@ -358,12 +358,20 @@ export function chunkText(text: string, chunkSize = 1000, overlap = 200): string
 }
 
 /**
- * Processes a document file for RAG (Retrieval Augmented Generation).
- * This function downloads the file, extracts text, chunks it, and queues individual chunk processing jobs.
- * @param param0 Object containing documentId and userId
- * @returns Promise with processing result
+ * Process a document for RAG
+ * @param documentId ID of the document to process
+ * @param userId ID of the user who uploaded the document
+ * @param fileExtension Optional file extension override
  */
-export async function processFileForRag({ documentId, userId }: { documentId: string; userId: string }) {
+export async function processFileForRag({ 
+  documentId, 
+  userId, 
+  fileExtension 
+}: { 
+  documentId: string; 
+  userId: string;
+  fileExtension?: string;
+}) {
   console.log(`[RAG Processor] Starting RAG processing for document ${documentId} for user ${userId}`);
   
   try {
@@ -400,10 +408,11 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
     });
 
     // Determine file type from MIME type and extension
-    const fileExtension = docDetails.fileName.split('.').pop()?.toLowerCase() || '';
+    const extractedFileExtension = docDetails.fileName.split('.').pop()?.toLowerCase() || '';
+    const effectiveFileExtension = fileExtension || extractedFileExtension;
     const mimeType = docDetails.fileType.toLowerCase();
 
-    console.log(`[RAG Processor] Attempting extraction for type: ${mimeType}, extension: ${fileExtension}`);
+    console.log(`[RAG Processor] Attempting extraction for type: ${mimeType}, extension: ${effectiveFileExtension}`);
 
     // --- Conditional Extraction Logic ---
     let extractedText = '';
@@ -416,7 +425,7 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
         statusMessage: 'Extracting text using Document AI' 
       });
       extractedText = await extractTextWithGoogleDocumentAI(fileBytes, docDetails.fileName);
-    } else if (mimeType === 'text/plain' || fileExtension === 'txt') {
+    } else if (mimeType === 'text/plain' || effectiveFileExtension === 'txt') {
       console.log('[RAG Processor] Reading plain text file...');
       await updateFileRagStatus({ 
         id: documentId, 
@@ -424,7 +433,7 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
         statusMessage: 'Reading plain text' 
       });
       extractedText = nodeBuffer.toString('utf-8');
-    } else if (mimeType === 'text/markdown' || fileExtension === 'md') {
+    } else if (mimeType === 'text/markdown' || effectiveFileExtension === 'md') {
       console.log('[RAG Processor] Reading markdown file as plain text...');
       await updateFileRagStatus({ 
         id: documentId, 
@@ -433,7 +442,7 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
       });
       // Basic extraction - just treat as text. Advanced parsing could strip markdown syntax if needed.
       extractedText = nodeBuffer.toString('utf-8');
-    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileExtension === 'docx') {
+    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || effectiveFileExtension === 'docx') {
       console.log('[RAG Processor] Extracting text from DOCX using mammoth...');
       await updateFileRagStatus({ 
         id: documentId, 
@@ -447,7 +456,7 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
         console.error('[RAG Processor] Error extracting DOCX:', docxError);
         throw new Error(`Failed to extract text from DOCX: ${docxError instanceof Error ? docxError.message : String(docxError)}`);
       }
-    } else if (mimeType === 'text/csv' || fileExtension === 'csv') {
+    } else if (mimeType === 'text/csv' || effectiveFileExtension === 'csv') {
       console.log('[RAG Processor] Extracting text from CSV using papaparse...');
       await updateFileRagStatus({ 
         id: documentId, 
@@ -468,7 +477,7 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
         console.error('[RAG Processor] Error extracting CSV:', csvError);
         throw new Error(`Failed to extract text from CSV: ${csvError instanceof Error ? csvError.message : String(csvError)}`);
       }
-    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || fileExtension === 'xlsx') {
+    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || effectiveFileExtension === 'xlsx') {
       console.log('[RAG Processor] Extracting text from XLSX using SheetJS...');
       await updateFileRagStatus({ 
         id: documentId, 
@@ -494,7 +503,7 @@ export async function processFileForRag({ documentId, userId }: { documentId: st
       }
     } else {
       // Fallback - try Document AI as a last resort
-      console.warn(`[RAG Processor] Unsupported file type: ${mimeType} / ${fileExtension}. Trying Document AI as fallback.`);
+      console.warn(`[RAG Processor] Unsupported file type: ${mimeType} / ${effectiveFileExtension}. Trying Document AI as fallback.`);
       await updateFileRagStatus({ 
         id: documentId, 
         processingStatus: 'processing', 

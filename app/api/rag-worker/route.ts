@@ -246,7 +246,16 @@ export async function POST(req: Request) {
       console.log(`[RAG Worker] Starting initial processing for document ${body.documentId}`);
       
       try {
-        const result = await processFileForRag({ documentId: body.documentId, userId: body.userId });
+        // Check if fileExtension was passed in the request
+        if (body.fileExtension) {
+          console.log(`[RAG Worker] File extension provided in request: ${body.fileExtension}`);
+        }
+        
+        const result = await processFileForRag({ 
+          documentId: body.documentId, 
+          userId: body.userId,
+          fileExtension: body.fileExtension // Pass along the file extension if provided
+        });
         return NextResponse.json({
           message: 'Document processing initiated, chunk jobs queued',
           result

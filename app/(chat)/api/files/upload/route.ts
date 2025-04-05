@@ -67,6 +67,24 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Log file details to help with debugging
     console.log(`[Upload API] Processing file: ${file.name}, Size: ${(file.size / (1024 * 1024)).toFixed(2)}MB, Type: ${file.type}`);
     
+    // Enhanced debugging for DOCX files
+    if (file.name.toLowerCase().endsWith('.docx')) {
+      console.log(`[Upload API] DOCX file detected: ${file.name}`);
+      console.log(`[Upload API] File MIME type from browser: ${file.type}`);
+      
+      const expectedMimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      
+      if (file.type !== expectedMimeType) {
+        console.warn(`[Upload API] WARNING: Browser reported incorrect MIME type for DOCX file!`);
+        console.warn(`[Upload API] Expected: ${expectedMimeType}, Got: ${file.type}`);
+        console.log(`[Upload API] Will use file extension to determine processing method instead of MIME type`);
+      }
+      
+      // Check if this file type is in our supported types
+      console.log(`[Upload API] Is this MIME type in supported types?: ${documentTypes.includes(file.type)}`);
+      console.log(`[Upload API] Is the expected MIME type in supported types?: ${documentTypes.includes(expectedMimeType)}`);
+    }
+    
     // Check file size limits - 20MB max
     const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB in bytes
     if (file.size > MAX_FILE_SIZE) {
@@ -97,8 +115,22 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     console.log(`[Upload API] Document ${documentId} saved to database`);
 
+    // Get file extension
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    
+    // Determine if document type is supported by either MIME type or file extension
+    const isSupportedByMimeType = documentTypes.includes(file.type);
+    const isSupportedByExtension = fileExtension === 'docx' || 
+                                  fileExtension === 'pdf' || 
+                                  fileExtension === 'txt' || 
+                                  fileExtension === 'md' || 
+                                  fileExtension === 'csv' || 
+                                  fileExtension === 'xlsx';
+    
     // If document type is supported, enqueue RAG processing
-    if (documentTypes.includes(file.type)) {
+    if (isSupportedByMimeType || isSupportedByExtension) {
+      console.log(`[Upload API] Document supported for RAG processing: MIME type check: ${isSupportedByMimeType}, Extension check: ${isSupportedByExtension}`);
+    
       const rawWorkerUrl = process.env.QSTASH_WORKER_URL;
 
       // Log the raw URL being used
@@ -145,6 +177,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       const jobPayload = {
         documentId,
         userId,
+        fileExtension,
       };
       console.log(`[Upload API] Prepared job payload:`, JSON.stringify(jobPayload));
 
