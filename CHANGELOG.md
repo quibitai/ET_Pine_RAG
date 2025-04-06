@@ -2,6 +2,13 @@
 
 All notable changes to the ET Pine RAG project will be documented in this file.
 
+## [1.9.0] - 2024-06-21
+
+### Changed
+- Removed default landing page text to create a cleaner interface
+- Removed "Deploy with Vercel" button from the header
+- Improved UI for a more professional appearance
+
 ## [1.8.1] - 2024-06-21
 
 ### Fixed
