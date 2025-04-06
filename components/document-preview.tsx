@@ -220,25 +220,23 @@ const PureHitboxLayer = ({
 }) => {
   const handleClick = useCallback(
     (event: MouseEvent<HTMLElement>) => {
+      console.log("Document preview clicked - activating document modal");
       const boundingBox = event.currentTarget.getBoundingClientRect();
 
-      setArtifact((artifact) =>
-        artifact.status === 'streaming'
-          ? { ...artifact, isVisible: true }
-          : {
-              ...artifact,
-              title: result.title,
-              documentId: result.id,
-              kind: result.kind,
-              isVisible: true,
-              boundingBox: {
-                left: boundingBox.x,
-                top: boundingBox.y,
-                width: boundingBox.width,
-                height: boundingBox.height,
-              },
-            },
-      );
+      // Always set isVisible to true and ensure all required properties are set
+      setArtifact((artifact) => ({
+        ...artifact,
+        title: result?.title || artifact.title || 'Untitled',
+        documentId: result?.id || artifact.documentId,
+        kind: result?.kind || artifact.kind || 'text',
+        isVisible: true,
+        boundingBox: {
+          left: boundingBox.x,
+          top: boundingBox.y,
+          width: boundingBox.width,
+          height: boundingBox.height,
+        },
+      }));
     },
     [setArtifact, result],
   );

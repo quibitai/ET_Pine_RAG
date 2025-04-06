@@ -101,7 +101,70 @@ function formatResponse(text: string): string {
     }
   }
   
-  return text.trim();
+  // Format Reasoning Bit questions to ensure proper list rendering
+  // Look for the pattern of emoji + type label format in numbered list items at the end of the response
+  const questionPatterns = [
+    /🔍\s*Investigation:/g,
+    /🔭\s*Exploration:/g, 
+    /🎯\s*Exploitation:/g,
+    /🃏\s*Imagination:/g
+  ];
+  
+  // Process the final section of the text where questions typically appear
+  let updatedText = text;
+  
+  // Check if we have question patterns at the end of the response
+  const hasQuestionPatterns = questionPatterns.some(pattern => pattern.test(text));
+  
+  if (hasQuestionPatterns) {
+    console.log("Detected EchoTango question patterns, formatting for better display");
+    
+    // Find where the questions begin - typically after a blank line at the end
+    const sections = text.split(/\n\s*\n/);
+    if (sections.length > 1) {
+      // Get the last section that might contain the questions
+      const lastSection = sections[sections.length - 1];
+      
+      // If this section has our question patterns, format it properly
+      if (questionPatterns.some(pattern => pattern.test(lastSection))) {
+        // Format each question to ensure proper rendering
+        let formattedQuestions = lastSection
+          // Ensure each question is on its own line
+          .replace(/(\d+\.|\-|\•|\*)\s*(🔍|🔭|🎯|🃏)/g, '\n$1 $2')
+          // Add space after emoji if missing
+          .replace(/(🔍|🔭|🎯|🃏)([A-Za-z])/g, '$1 $2')
+          // Ensure consistent spacing for the labels
+          .replace(/(🔍|🔭|🎯|🃏)\s+([A-Za-z]+):/g, '$1 $2: ')
+          .trim();
+          
+        // If the formatted section doesn't start with numbers, add them
+        if (!/^\d+\./.test(formattedQuestions)) {
+          formattedQuestions = formattedQuestions
+            // Split by our emojis
+            .split(/(🔍|🔭|🎯|🃏)/)
+            // Filter out empty parts
+            .filter(part => part.trim())
+            // Re-assemble with numbered prefixes
+            .map((part, i) => {
+              if (part.length === 2 && /[\u{1F300}-\u{1F5FF}\u{1F900}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(part)) {
+                // This is an emoji
+                return `\n${Math.floor(i/2) + 1}. ${part}`;
+              }
+              return part;
+            })
+            .join('');
+        }
+        
+        // Replace the last section with our formatted version
+        sections[sections.length - 1] = formattedQuestions;
+        
+        // Rejoin all sections
+        updatedText = sections.join('\n\n');
+      }
+    }
+  }
+  
+  return updatedText.trim();
 }
 
 /**
