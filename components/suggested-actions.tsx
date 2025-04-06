@@ -13,25 +13,20 @@ interface SuggestedActionsProps {
 function PureSuggestedActions({ chatId, append }: SuggestedActionsProps) {
   const suggestedActions = [
     {
-      title: 'What are the advantages',
-      label: 'of using Next.js?',
-      action: 'What are the advantages of using Next.js?',
+      title: 'Create a creative pitch',
+      label: 'for a brand anthem video for Marucci Sports',
+      action: 'Create a creative pitch for a brand anthem video for @https://maruccisports.com/ Include 3 narrative options and a comprehensive budget based on the Echo Tango Rate card and budgets from past projects.',
     },
     {
-      title: 'Write code to',
-      label: `demonstrate djikstra's algorithm`,
-      action: `Write code to demonstrate djikstra's algorithm`,
+      title: 'Create a 3D image',
+      label: 'of a burning skull in the style of This is Spinal Tap',
+      action: 'Create a 3D image of a burning skull in the style of This is Spinal Tap.',
     },
     {
-      title: 'Help me write an essay',
-      label: `about silicon valley`,
-      action: `Help me write an essay about silicon valley`,
-    },
-    {
-      title: 'What is the weather',
-      label: 'in San Francisco?',
-      action: 'What is the weather in San Francisco?',
-    },
+      title: 'Provide a comprehensive overview',
+      label: 'of Echo Tango including their approach to work and ideal client',
+      action: 'Provide a comprehensive overview of Echo Tango (echotango.co) including their approach to work and ideal client.',
+    }
   ];
 
   return (
