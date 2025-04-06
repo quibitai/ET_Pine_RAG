@@ -1180,11 +1180,10 @@ ${contextInstructions}`;
         const totalDuration = Date.now() - requestStartTime;
         console.timeEnd('stream_text_call');
         console.timeEnd('total_request_duration');
-        console.log(`=== API route POST handler failed with error after ${totalDuration}ms ===`);
-        return new Response(
-          'Oops, an error occurred while processing your request. Please try again.',
-          { status: 500 }
-        );
+        console.log(`=== API route POST handler failed within stream onError after ${totalDuration}ms ===`);
+        
+        // Return a string as expected by the type definition
+        return 'Oops, an error occurred while processing your request. Please try again.';
       },
     });
     
@@ -1194,10 +1193,11 @@ ${contextInstructions}`;
     console.error('Unhandled error in POST handler:', error);
     console.log('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
     console.timeEnd('total_request_duration');
-    console.log(`=== API route POST handler failed with error after ${totalDuration}ms ===`);
-    return new Response(
-      'Oops, an error occurred while processing your request. Please try again.',
-      { status: 500 }
-    );
+    console.log(`=== API route POST handler failed with unhandled error after ${totalDuration}ms ===`);
+    
+    // Return a proper HTTP response for errors outside the stream
+    return new Response('Oops, an error occurred while processing your request. Please try again.', { 
+      status: 500 
+    });
   }
 }
