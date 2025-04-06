@@ -1144,7 +1144,7 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                       attachments:
                         assistantMessage.experimental_attachments ?? [],
                       createdAt: new Date(),
-                      ...(corState ? { corState } : {}),
+                      corState: corState || null,
                     },
                   ],
                 });
