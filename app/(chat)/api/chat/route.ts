@@ -1181,7 +1181,10 @@ ${contextInstructions}`;
         console.timeEnd('stream_text_call');
         console.timeEnd('total_request_duration');
         console.log(`=== API route POST handler failed with error after ${totalDuration}ms ===`);
-        return 'Oops, an error occurred while processing your request. Please try again.';
+        return new Response(
+          'Oops, an error occurred while processing your request. Please try again.',
+          { status: 500 }
+        );
       },
     });
     
@@ -1192,6 +1195,9 @@ ${contextInstructions}`;
     console.log('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
     console.timeEnd('total_request_duration');
     console.log(`=== API route POST handler failed with error after ${totalDuration}ms ===`);
-    return 'Oops, an error occurred while processing your request. Please try again.';
+    return new Response(
+      'Oops, an error occurred while processing your request. Please try again.',
+      { status: 500 }
+    );
   }
 }
