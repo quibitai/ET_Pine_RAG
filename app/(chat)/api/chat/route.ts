@@ -62,19 +62,17 @@ const initialCorState: CorState = {
   "🗣": "Low"
 };
 
-// Updated helper function to properly clean all CoR-related content and format JSON responses
+// Updated helper function to properly clean formatting and remove any ET: prefix
 function formatResponse(text: string): string {
   if (!text) return "";
   
-  // 1. Remove the CoR block completely using regex
-  let cleanedText = text.replace(/<CoRUpdate>[\s\S]*?<\/CoRUpdate>/g, '').trim();
-  
-  // 2. Remove any leading "ET:" prefix
+  // Remove any leading "ET:" prefix
+  let cleanedText = text;
   if (cleanedText.startsWith("ET:")) {
     cleanedText = cleanedText.substring(3).trim();
   }
   
-  // 3. Format JSON responses correctly - detect direct JSON output that should be formatted
+  // Format JSON responses correctly - detect direct JSON output that should be formatted
   if (cleanedText.trim().startsWith('{') && cleanedText.includes('"results":')) {
     try {
       // This looks like raw Tavily results being output directly
@@ -101,70 +99,7 @@ function formatResponse(text: string): string {
     }
   }
   
-  // 4. Format Reasoning Bit questions to ensure proper list rendering
-  // Look for the pattern of emoji + type label format in numbered list items at the end of the response
-  const questionPatterns = [
-    /🔍\s*Investigation:/g,
-    /🔭\s*Exploration:/g, 
-    /🎯\s*Exploitation:/g,
-    /🃏\s*Imagination:/g
-  ];
-  
-  // Process the final section of the text where questions typically appear
-  let updatedText = cleanedText;
-  
-  // Check if we have question patterns at the end of the response
-  const hasQuestionPatterns = questionPatterns.some(pattern => pattern.test(cleanedText));
-  
-  if (hasQuestionPatterns) {
-    console.log("Detected EchoTango question patterns, formatting for better display");
-    
-    // Find where the questions begin - typically after a blank line at the end
-    const sections = cleanedText.split(/\n\s*\n/);
-    if (sections.length > 1) {
-      // Get the last section that might contain the questions
-      const lastSection = sections[sections.length - 1];
-      
-      // If this section has our question patterns, format it properly
-      if (questionPatterns.some(pattern => pattern.test(lastSection))) {
-        // Format each question to ensure proper rendering
-        let formattedQuestions = lastSection
-          // Ensure each question is on its own line
-          .replace(/(\d+\.|\-|\•|\*)\s*(🔍|🔭|🎯|🃏)/g, '\n$1 $2')
-          // Add space after emoji if missing
-          .replace(/(🔍|🔭|🎯|🃏)([A-Za-z])/g, '$1 $2')
-          // Ensure consistent spacing for the labels
-          .replace(/(🔍|🔭|🎯|🃏)\s+([A-Za-z]+):/g, '$1 $2: ')
-          .trim();
-          
-        // If the formatted section doesn't start with numbers, add them
-        if (!/^\d+\./.test(formattedQuestions)) {
-          formattedQuestions = formattedQuestions
-            // Split by our emojis
-            .split(/(🔍|🔭|🎯|🃏)/)
-            // Filter out empty parts
-            .filter(part => part.trim())
-            // Re-assemble with numbered prefixes
-            .map((part, i) => {
-              if (part.length === 2 && /[\u{1F300}-\u{1F5FF}\u{1F900}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(part)) {
-                // This is an emoji
-                return `\n${Math.floor(i/2) + 1}. ${part}`;
-              }
-              return part;
-            })
-            .join('');
-        }
-        
-        // Replace the last section with our formatted version
-        sections[sections.length - 1] = formattedQuestions;
-        
-        // Rejoin all sections
-        updatedText = sections.join('\n\n');
-      }
-    }
-  }
-  
-  return updatedText.trim();
+  return cleanedText.trim();
 }
 
 /**
@@ -971,92 +906,6 @@ ${contextText}
 ${contextInstructions}`;
     }
 
-    // Specialized prompt enhancement for EchoTango Reasoning Bit
-    if (selectedChatModel === 'echotango-reasoning-bit') {
-      console.log("Preparing specialized prompt for EchoTango Reasoning Bit");
-      
-      // Get current CoR state from the most recent assistant message
-      let currentCorState = null;
-      let lastAssistantMessage = null;
-      
-      // Find the most recent assistant message
-      for (let i = messages.length - 2; i >= 0; i--) {
-        if (messages[i].role === 'assistant') {
-          lastAssistantMessage = messages[i];
-          break;
-        }
-      }
-      
-      if (lastAssistantMessage) {
-        // Try to get the CoR state from the database
-        try {
-          const dbMessages = await getMessageById({ id: lastAssistantMessage.id });
-          const dbMessage = dbMessages[0]; // Access the first element of the array
-          
-          if (dbMessage && dbMessage.corState) {
-            currentCorState = dbMessage.corState;
-            console.log("Retrieved CoR state from database:", JSON.stringify(currentCorState, null, 2));
-          }
-        } catch (error) {
-          console.error("Error retrieving CoR state:", error);
-        }
-      }
-      
-      if (!currentCorState) {
-        // Use default CoR state if none found
-        currentCorState = {
-          "🗺️": "Unknown",
-          "🚦": 0,
-          "👍🏼": "Unknown",
-          "🔧": "Waiting to adjust based on response",
-          "🧭": [
-            "1. Gather information from the user",
-            "2. Come up with a plan to help the user",
-            "3. Help the user achieve their goal(s)"
-          ],
-          "🧠": "Expertise in gathering context, specializing in goal achievement using user input",
-          "🗣": "Low"
-        };
-        console.log("Using default CoR state:", JSON.stringify(currentCorState, null, 2));
-      }
-      
-      // Inject current CoR state into the system prompt
-      const currentCorStateString = JSON.stringify(currentCorState, null, 2);
-      enhancedSystemPrompt = `${enhancedSystemPrompt}\n\n# CURRENT CoR STATE:\n\`\`\`json\n${currentCorStateString}\n\`\`\`\n\n# TASK:\nUpdate the CoR based on the user message and conversation history, then generate the response following all rules.`;
-      
-      // If context is available, enhance CoR with context-aware information
-      if (contextText && currentCorState) {
-        console.log("Enhancing CoR with context awareness");
-        
-        // Cast to the proper type before accessing emoji properties
-        const typedCorState = currentCorState as CorState;
-        
-        // If we have a specific goal in the CoR, use it to enhance the RAG query
-        if (typedCorState["🗺️"] && typedCorState["🗺️"] !== "Unknown") {
-          console.log(`Using goal from CoR for context relevance: ${typedCorState["🗺️"]}`);
-          enhancedSystemPrompt += `\n\nWhen generating your response, focus particularly on information in the context that relates to the user's goal: "${typedCorState["🗺️"]}".`;
-        }
-        
-        // If we have specific expertise in the CoR, highlight it
-        if (typedCorState["🧠"] && typedCorState["🧠"] !== "Expertise in gathering context, specializing in goal achievement using user input") {
-          console.log(`Using expertise from CoR: ${typedCorState["🧠"]}`);
-          enhancedSystemPrompt += `\n\nApply your expertise in: "${typedCorState["🧠"]}" when analyzing the context.`;
-        }
-      }
-      
-      // Add a structure extraction instruction to get the updated CoR state
-      enhancedSystemPrompt += `\n\n# IMPORTANT INSTRUCTION FOR CoR UPDATE:
-Before generating your visible response, think through and update the CoR state based on this conversation.
-Then include your updated CoR state in the response within an XML-like tag that will be parsed out and not shown to the user:
-<CoRUpdate>
-{
-  // Your updated CoR JSON here, including all keys from the current state, modified as needed
-}
-</CoRUpdate>
-
-Then generate your actual user-visible response (starting with "ET: ") and ending with the 4 follow-up questions.`;
-    }
-
     console.timeEnd('prepare_prompt');
 
     console.log("Creating data stream response with model:", selectedChatModel);
@@ -1139,11 +988,7 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
         
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
-          system: enhancedSystemPrompt + (
-            selectedChatModel === 'echotango-reasoning-bit' 
-              ? "\n\nNever output <CoRUpdate> tags directly to the user. These should be automatically removed by the system. IMPORTANT: Generate complete, valid JSON within <CoRUpdate> tags." 
-              : ""
-          ),
+          system: enhancedSystemPrompt,
           messages: messagesForAI, // Use filtered messages instead of original messages
           maxSteps: 5,
           experimental_activeTools: [
@@ -1189,33 +1034,14 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                   responseMessages: response.messages,
                 });
 
-                // Handle CoR state for EchoTango Reasoning Bit
-                let corState = null;
-                if (selectedChatModel === 'echotango-reasoning-bit' && assistantMessage && assistantMessage.parts) {
-                  // Extract the full raw text from assistantMessage.parts
+                // Format text for all models without extracting CoR state
+                if (assistantMessage && assistantMessage.parts) {
+                  // Clean any text parts
                   const textPart = assistantMessage.parts.find(part => part.type === 'text');
                   if (textPart && textPart.text) {
-                    const fullRawText = textPart.text;
-                    
-                    // Extract CoR state using regex BEFORE any text cleaning
-                    const corMatch = fullRawText.match(/<CoRUpdate>([\s\S]*?)<\/CoRUpdate>/);
-                    if (corMatch && corMatch[1]) {
-                      try {
-                        // Clean up the content and parse it as JSON
-                        const cleanedContent = corMatch[1].trim();
-                        corState = JSON.parse(cleanedContent);
-                        console.log("Extracted CoR state:", JSON.stringify(corState, null, 2));
-                      } catch (error) {
-                        console.error("Error parsing CoR state:", error);
-                        // If parsing fails, corState remains null
-                      }
-                    } else {
-                      console.log("No CoR state found in response");
-                    }
-                    
-                    // Now clean the text for database saving AFTER extracting CoR state
-                    const cleanedText = formatResponse(fullRawText);
-                    console.log("Formatted response text, removing CoR tags and ET prefix");
+                    // Use the formatResponse function to clean and format the text
+                    const cleanedText = formatResponse(textPart.text);
+                    console.log("Formatted response text");
                     
                     // Update the message part with cleaned text
                     assistantMessage.parts = assistantMessage.parts.map(part => {
@@ -1225,28 +1051,9 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                       return part;
                     });
                   }
-                } else {
-                  // Format Tavily results and other JSON responses even for non-EchoTango models
-                  const textPart = assistantMessage?.parts?.find(part => part.type === 'text');
-                  if (textPart && textPart.text) {
-                    // Use the formatResponse function to check for and format JSON responses
-                    const updatedText = formatResponse(textPart.text);
-                    
-                    if (updatedText !== textPart.text) {
-                      console.log("Formatted potential JSON response or Tavily search results");
-                      if (assistantMessage.parts) {
-                        assistantMessage.parts = assistantMessage.parts.map(part => {
-                          if (part.type === 'text') {
-                            return { ...part, text: updatedText };
-                          }
-                          return part;
-                        });
-                      }
-                    }
-                  }
                 }
 
-                // Save the message to the database
+                // Save the message to the database with corState always set to null
                 await saveMessages({
                   messages: [
                     {
@@ -1257,7 +1064,7 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                       attachments:
                         assistantMessage.experimental_attachments ?? [],
                       createdAt: new Date(),
-                      corState: corState || null,
+                      corState: null,
                     },
                   ],
                 });

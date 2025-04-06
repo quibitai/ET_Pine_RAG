@@ -93,7 +93,7 @@ export const codeArtifact = new Artifact<'code', Metadata>({
   content: ({ metadata, setMetadata, ...props }) => {
     return (
       <>
-        <div className="px-1">
+        <div className="p-6">
           <CodeEditor {...props} />
         </div>
 
