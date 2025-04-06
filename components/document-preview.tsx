@@ -59,6 +59,22 @@ export function DocumentPreview({
     }
   }, [artifact.documentId, setArtifact]);
 
+  useEffect(() => {
+    if (previewDocument && typeof window !== 'undefined') {
+      try {
+        const storageKey = `document-content-${previewDocument.id}`;
+        const cachedContent = localStorage.getItem(storageKey);
+        
+        if (cachedContent) {
+          console.log(`Retrieved cached content for document ${previewDocument.id} from localStorage`);
+          (previewDocument as any).content = cachedContent;
+        }
+      } catch (error) {
+        console.error('Error retrieving content from localStorage:', error);
+      }
+    }
+  }, [previewDocument]);
+
   if (artifact.isVisible) {
     if (result) {
       return (

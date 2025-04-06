@@ -106,12 +106,27 @@ function PureArtifact({
       const mostRecentDocument = documents.at(-1) as ArtifactDocument;
 
       if (mostRecentDocument) {
+        const documentContent = mostRecentDocument.content || '';
+        
+        console.log(`Loaded document ${mostRecentDocument.id} with content length: ${documentContent.length}`);
+        
         setDocument(mostRecentDocument);
         setCurrentVersionIndex(documents.length - 1);
+        
         setArtifact((currentArtifact) => ({
           ...currentArtifact,
-          content: mostRecentDocument.content ?? '',
+          content: documentContent,
         }));
+        
+        try {
+          if (documentContent && typeof window !== 'undefined') {
+            const storageKey = `document-content-${mostRecentDocument.id}`;
+            localStorage.setItem(storageKey, documentContent);
+            console.log(`Cached document content in localStorage: ${storageKey}`);
+          }
+        } catch (error) {
+          console.error('Failed to cache document content in localStorage:', error);
+        }
       }
     }
   }, [documents, setArtifact]);
@@ -127,6 +142,16 @@ function PureArtifact({
     (updatedContent: string) => {
       if (!artifact) return;
 
+      try {
+        if (typeof window !== 'undefined') {
+          const storageKey = `document-content-${artifact.documentId}`;
+          localStorage.setItem(storageKey, updatedContent);
+          console.log(`Updated document content cache: ${storageKey}`);
+        }
+      } catch (error) {
+        console.error('Failed to update document content cache:', error);
+      }
+
       mutate<Array<ArtifactDocument>>(
         `/api/document?id=${artifact.documentId}`,
         async (currentDocuments) => {
@@ -134,37 +159,50 @@ function PureArtifact({
 
           const currentDocument = currentDocuments.at(-1);
 
-          if (!currentDocument || !currentDocument.content) {
+          if (!currentDocument) {
             setIsContentDirty(false);
             return currentDocuments;
           }
 
           if (currentDocument.content !== updatedContent) {
-            await fetch(`/api/document?id=${artifact.documentId}`, {
-              method: 'POST',
-              body: JSON.stringify({
-                title: artifact.title,
+            try {
+              await fetch(`/api/document?id=${artifact.documentId}`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  title: artifact.title,
+                  content: updatedContent,
+                  kind: artifact.kind,
+                }),
+              });
+
+              console.log(`Saved document ${artifact.documentId} with content length: ${updatedContent.length}`);
+              setIsContentDirty(false);
+
+              const newDocument = {
+                ...currentDocument,
                 content: updatedContent,
-                kind: artifact.kind,
-              }),
-            });
+                fileSize: new Blob([updatedContent]).size,
+                createdAt: new Date(),
+              };
 
-            setIsContentDirty(false);
-
-            const newDocument = {
-              ...currentDocument,
-              content: updatedContent,
-              createdAt: new Date(),
-            };
-
-            return [...currentDocuments, newDocument];
+              return [...currentDocuments, newDocument];
+            } catch (error) {
+              console.error('Failed to save document content to server:', error);
+              
+              setArtifact((currentArtifact) => ({
+                ...currentArtifact,
+                content: updatedContent,
+              }));
+              
+              return currentDocuments;
+            }
           }
           return currentDocuments;
         },
         { revalidate: false },
       );
     },
-    [artifact, mutate],
+    [artifact, mutate, setArtifact],
   );
 
   const debouncedHandleContentChange = useDebounceCallback(

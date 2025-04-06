@@ -62,7 +62,7 @@ const initialCorState: CorState = {
   "🗣": "Low"
 };
 
-// Updated helper function to properly clean all CoR-related content
+// Updated helper function to properly clean all CoR-related content and format JSON responses
 function formatResponse(text: string): string {
   if (!text) return "";
   
@@ -72,6 +72,33 @@ function formatResponse(text: string): string {
   // Remove any existing ET: prefix
   if (text.startsWith("ET:")) {
     text = text.substring(3).trim();
+  }
+  
+  // Format JSON responses correctly - detect direct JSON output that should be formatted
+  if (text.trim().startsWith('{') && text.includes('"results":')) {
+    try {
+      // This looks like raw Tavily results being output directly
+      const jsonData = JSON.parse(text);
+      
+      // Check if this is Tavily search results
+      if (jsonData.results && Array.isArray(jsonData.results)) {
+        // Create a formatted version of the search results
+        let formattedResults = "Here's what I found from my web search:\n\n";
+        
+        jsonData.results.forEach((result: any, index: number) => {
+          formattedResults += `${index + 1}. **${result.title || 'Untitled'}**\n`;
+          formattedResults += `   ${result.url || ''}\n`;
+          if (result.content) {
+            formattedResults += `   ${result.content.substring(0, 200)}...\n\n`;
+          }
+        });
+        
+        return formattedResults;
+      }
+    } catch (e) {
+      // Not valid JSON, continue with normal processing
+      console.log("Attempted to parse JSON in response but failed:", e);
+    }
   }
   
   return text.trim();
@@ -1145,6 +1172,25 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                         }
                         return part;
                       });
+                    }
+                  }
+                } else {
+                  // Format Tavily results and other JSON responses even for non-EchoTango models
+                  const textPart = assistantMessage?.parts?.find(part => part.type === 'text');
+                  if (textPart && textPart.text) {
+                    // Use the formatResponse function to check for and format JSON responses
+                    const updatedText = formatResponse(textPart.text);
+                    
+                    if (updatedText !== textPart.text) {
+                      console.log("Formatted potential JSON response or Tavily search results");
+                      if (assistantMessage.parts) {
+                        assistantMessage.parts = assistantMessage.parts.map(part => {
+                          if (part.type === 'text') {
+                            return { ...part, text: updatedText };
+                          }
+                          return part;
+                        });
+                      }
                     }
                   }
                 }
