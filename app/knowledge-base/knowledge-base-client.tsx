@@ -19,6 +19,8 @@ import {
   SparklesIcon,
   Trash2Icon,
   ArrowLeftIcon,
+  DownloadIcon,
+  EyeIcon,
 } from 'lucide-react';
 import {
   Table,
@@ -331,6 +333,27 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
     setIsDetailsModalOpen(true);
   };
   
+  // Add handleDocumentDownload function to the component
+  const handleDocumentDownload = async (docId: string, fileName: string) => {
+    try {
+      // Create a download link
+      const downloadUrl = `/api/documents/${docId}/download`;
+      
+      // Create an invisible anchor tag and trigger download
+      const a = window.document.createElement('a');
+      a.href = downloadUrl;
+      a.download = fileName;
+      window.document.body.appendChild(a);
+      a.click();
+      window.document.body.removeChild(a);
+      
+      toast.success('Download started');
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      toast.error('Failed to download document');
+    }
+  };
+  
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -546,6 +569,28 @@ export default function KnowledgeBaseClient({ user }: { user: User }) {
                           >
                             <SparklesIcon className="h-4 w-4 mr-2" />
                             <span>Chat with document</span>
+                          </DropdownMenuItem>
+                          
+                          {/* Add View Document option for text-based files */}
+                          {(doc.fileType.includes('text') || 
+                            doc.fileType.includes('json') || 
+                            doc.fileType.includes('code')) && (
+                            <DropdownMenuItem 
+                              onClick={() => handleShowDetails(doc)}
+                              className="cursor-pointer"
+                            >
+                              <EyeIcon className="h-4 w-4 mr-2" />
+                              <span>View document</span>
+                            </DropdownMenuItem>
+                          )}
+                          
+                          {/* Add Download Document option */}
+                          <DropdownMenuItem 
+                            onClick={() => handleDocumentDownload(doc.id, doc.fileName)}
+                            className="cursor-pointer"
+                          >
+                            <DownloadIcon className="h-4 w-4 mr-2" />
+                            <span>Download document</span>
                           </DropdownMenuItem>
                           
                           {doc.processingStatus === 'failed' && (
