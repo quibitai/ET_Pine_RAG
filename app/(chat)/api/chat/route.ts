@@ -35,6 +35,33 @@ import { getPineconeIndex, queryPineconeWithDiagnostics } from '@/lib/pinecone-c
 export const maxDuration = 60;
 export const runtime = 'nodejs';
 
+// Define the structure of the Chain of Reason (CoR) state
+interface CorState {
+  "🗺️": string;    // Long term goal
+  "🚦": number;    // Goal progress (-1, 0, or 1)
+  "👍🏼": string;   // Inferred user preferences 
+  "🔧": string;    // Adjustment to fine-tune response
+  "🧭": string[];  // Step-by-Step strategy
+  "🧠": string;    // Expertise descriptor
+  "🗣": string;    // Verbosity of output (low, med, high)
+  [key: string]: any; // Allow for additional fields
+}
+
+// Use the appropriate type when creating the initial CoR state
+const initialCorState: CorState = {
+  "🗺️": "Unknown",
+  "🚦": 0,
+  "👍🏼": "Unknown",
+  "🔧": "Waiting to adjust based on response",
+  "🧭": [
+    "1. Gather information from the user",
+    "2. Come up with a plan to help the user",
+    "3. Help the user achieve their goal(s)"
+  ],
+  "🧠": "Expertise in gathering context, specializing in goal achievement using user input",
+  "🗣": "Low"
+};
+
 /**
  * Enhanced version that fetches document metadata from the database for attachments
  * to ensure proper content types are used instead of application/octet-stream
@@ -369,8 +396,10 @@ export async function POST(request: Request) {
         if (lastAssistantMessage) {
           // Try to get the full message with CoR state from the database
           try {
-            const dbMessage = await getMessageById({ id: lastAssistantMessage.id });
-            
+            // getMessageById returns an array
+            const dbMessages = await getMessageById({ id: lastAssistantMessage.id });
+            const dbMessage = dbMessages[0]; // Access the first element of the array
+
             if (dbMessage && dbMessage.corState) {
               console.log("Retrieved CoR state from database for message:", lastAssistantMessage.id);
               
@@ -504,21 +533,6 @@ export async function POST(request: Request) {
         // Generate a response with the mandated welcome message
         const responseId = generateUUID();
         const welcomeMessage = "ET: Hello, I am **Echo Tango** What can I help you accomplish today?";
-        
-        // Initialize the default CoR state
-        const initialCorState = {
-          "🗺️": "Unknown",
-          "🚦": 0,
-          "👍🏼": "Unknown",
-          "🔧": "Waiting to adjust based on response",
-          "🧭": [
-            "1. Gather information from the user",
-            "2. Come up with a plan to help the user",
-            "3. Help the user achieve their goal(s)"
-          ],
-          "🧠": "Expertise in gathering context, specializing in goal achievement using user input",
-          "🗣": "Low"
-        };
         
         // Save the welcome message with the initial CoR state
         await saveMessages({
@@ -867,7 +881,8 @@ ${contextInstructions}`;
       if (lastAssistantMessage) {
         // Try to get the CoR state from the database
         try {
-          const dbMessage = await getMessageById({ id: lastAssistantMessage.id });
+          const dbMessages = await getMessageById({ id: lastAssistantMessage.id });
+          const dbMessage = dbMessages[0]; // Access the first element of the array
           
           if (dbMessage && dbMessage.corState) {
             currentCorState = dbMessage.corState;
@@ -904,16 +919,19 @@ ${contextInstructions}`;
       if (contextText && currentCorState) {
         console.log("Enhancing CoR with context awareness");
         
+        // Cast to the proper type before accessing emoji properties
+        const typedCorState = currentCorState as CorState;
+        
         // If we have a specific goal in the CoR, use it to enhance the RAG query
-        if (currentCorState["🗺️"] && currentCorState["🗺️"] !== "Unknown") {
-          console.log(`Using goal from CoR for context relevance: ${currentCorState["🗺️"]}`);
-          enhancedSystemPrompt += `\n\nWhen generating your response, focus particularly on information in the context that relates to the user's goal: "${currentCorState["🗺️"]}".`;
+        if (typedCorState["🗺️"] && typedCorState["🗺️"] !== "Unknown") {
+          console.log(`Using goal from CoR for context relevance: ${typedCorState["🗺️"]}`);
+          enhancedSystemPrompt += `\n\nWhen generating your response, focus particularly on information in the context that relates to the user's goal: "${typedCorState["🗺️"]}".`;
         }
         
         // If we have specific expertise in the CoR, highlight it
-        if (currentCorState["🧠"] && currentCorState["🧠"] !== "Expertise in gathering context, specializing in goal achievement using user input") {
-          console.log(`Using expertise from CoR: ${currentCorState["🧠"]}`);
-          enhancedSystemPrompt += `\n\nApply your expertise in: "${currentCorState["🧠"]}" when analyzing the context.`;
+        if (typedCorState["🧠"] && typedCorState["🧠"] !== "Expertise in gathering context, specializing in goal achievement using user input") {
+          console.log(`Using expertise from CoR: ${typedCorState["🧠"]}`);
+          enhancedSystemPrompt += `\n\nApply your expertise in: "${typedCorState["🧠"]}" when analyzing the context.`;
         }
       }
       
@@ -1060,7 +1078,7 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                 
                 // Handle CoR state for EchoTango Reasoning Bit
                 let corState = null;
-                if (selectedChatModel === 'echotango-reasoning-bit') {
+                if (selectedChatModel === 'echotango-reasoning-bit' && assistantMessage && assistantMessage.parts) {
                   // Extract CoR state from the response
                   const fullText = assistantMessage.parts.find(part => part.type === 'text')?.text || '';
                   
