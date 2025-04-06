@@ -66,19 +66,19 @@ const initialCorState: CorState = {
 function formatResponse(text: string): string {
   if (!text) return "";
   
-  // Clean the text of any CoR tags and their content
-  text = text.replace(/<CoRUpdate>[\s\S]*?<\/CoRUpdate>/g, '').trim();
+  // 1. Remove the CoR block completely using regex
+  let cleanedText = text.replace(/<CoRUpdate>[\s\S]*?<\/CoRUpdate>/g, '').trim();
   
-  // Remove any existing ET: prefix
-  if (text.startsWith("ET:")) {
-    text = text.substring(3).trim();
+  // 2. Remove any leading "ET:" prefix
+  if (cleanedText.startsWith("ET:")) {
+    cleanedText = cleanedText.substring(3).trim();
   }
   
-  // Format JSON responses correctly - detect direct JSON output that should be formatted
-  if (text.trim().startsWith('{') && text.includes('"results":')) {
+  // 3. Format JSON responses correctly - detect direct JSON output that should be formatted
+  if (cleanedText.trim().startsWith('{') && cleanedText.includes('"results":')) {
     try {
       // This looks like raw Tavily results being output directly
-      const jsonData = JSON.parse(text);
+      const jsonData = JSON.parse(cleanedText);
       
       // Check if this is Tavily search results
       if (jsonData.results && Array.isArray(jsonData.results)) {
@@ -101,7 +101,7 @@ function formatResponse(text: string): string {
     }
   }
   
-  // Format Reasoning Bit questions to ensure proper list rendering
+  // 4. Format Reasoning Bit questions to ensure proper list rendering
   // Look for the pattern of emoji + type label format in numbered list items at the end of the response
   const questionPatterns = [
     /🔍\s*Investigation:/g,
@@ -111,16 +111,16 @@ function formatResponse(text: string): string {
   ];
   
   // Process the final section of the text where questions typically appear
-  let updatedText = text;
+  let updatedText = cleanedText;
   
   // Check if we have question patterns at the end of the response
-  const hasQuestionPatterns = questionPatterns.some(pattern => pattern.test(text));
+  const hasQuestionPatterns = questionPatterns.some(pattern => pattern.test(cleanedText));
   
   if (hasQuestionPatterns) {
     console.log("Detected EchoTango question patterns, formatting for better display");
     
     // Find where the questions begin - typically after a blank line at the end
-    const sections = text.split(/\n\s*\n/);
+    const sections = cleanedText.split(/\n\s*\n/);
     if (sections.length > 1) {
       // Get the last section that might contain the questions
       const lastSection = sections[sections.length - 1];
@@ -1192,50 +1192,38 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                 // Handle CoR state for EchoTango Reasoning Bit
                 let corState = null;
                 if (selectedChatModel === 'echotango-reasoning-bit' && assistantMessage && assistantMessage.parts) {
-                  // Extract CoR state from the response
-                  const fullText = assistantMessage.parts.find(part => part.type === 'text')?.text || '';
-                  
-                  // Extract the CoR state using regex
-                  const corMatch = fullText.match(/<CoRUpdate>([\s\S]*?)<\/CoRUpdate>/);
-                  if (corMatch && corMatch[1]) {
-                    try {
-                      // Clean up the content and parse it as JSON
-                      const cleanedContent = corMatch[1].trim();
-                      corState = JSON.parse(cleanedContent);
-                      console.log("Extracted CoR state:", JSON.stringify(corState, null, 2));
-                      
-                      // Format the response to remove CoR tags and ET: prefix
-                      const textPart = assistantMessage.parts.find(part => part.type === 'text');
-                      if (textPart) {
-                        const updatedText = formatResponse(fullText);
-                        console.log("Formatted response text, removing CoR tags");
-                        
-                        assistantMessage.parts = assistantMessage.parts.map(part => {
-                          if (part.type === 'text') {
-                            return { ...part, text: updatedText };
-                          }
-                          return part;
-                        });
-                      }
-                    } catch (error) {
-                      console.error("Error parsing CoR state:", error);
-                    }
-                  } else {
-                    console.log("No CoR state found in response");
+                  // Extract the full raw text from assistantMessage.parts
+                  const textPart = assistantMessage.parts.find(part => part.type === 'text');
+                  if (textPart && textPart.text) {
+                    const fullRawText = textPart.text;
                     
-                    // Format the response to remove CoR tags and ET: prefix
-                    const textPart = assistantMessage.parts.find(part => part.type === 'text');
-                    if (textPart) {
-                      const updatedText = formatResponse(fullText);
-                      console.log("Formatted response text, removing CoR tags");
-                      
-                      assistantMessage.parts = assistantMessage.parts.map(part => {
-                        if (part.type === 'text') {
-                          return { ...part, text: updatedText };
-                        }
-                        return part;
-                      });
+                    // Extract CoR state using regex BEFORE any text cleaning
+                    const corMatch = fullRawText.match(/<CoRUpdate>([\s\S]*?)<\/CoRUpdate>/);
+                    if (corMatch && corMatch[1]) {
+                      try {
+                        // Clean up the content and parse it as JSON
+                        const cleanedContent = corMatch[1].trim();
+                        corState = JSON.parse(cleanedContent);
+                        console.log("Extracted CoR state:", JSON.stringify(corState, null, 2));
+                      } catch (error) {
+                        console.error("Error parsing CoR state:", error);
+                        // If parsing fails, corState remains null
+                      }
+                    } else {
+                      console.log("No CoR state found in response");
                     }
+                    
+                    // Now clean the text for database saving AFTER extracting CoR state
+                    const cleanedText = formatResponse(fullRawText);
+                    console.log("Formatted response text, removing CoR tags and ET prefix");
+                    
+                    // Update the message part with cleaned text
+                    assistantMessage.parts = assistantMessage.parts.map(part => {
+                      if (part.type === 'text') {
+                        return { ...part, text: cleanedText };
+                      }
+                      return part;
+                    });
                   }
                 } else {
                   // Format Tavily results and other JSON responses even for non-EchoTango models

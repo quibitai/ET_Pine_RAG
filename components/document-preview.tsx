@@ -79,21 +79,26 @@ export function DocumentPreview({
     }
   }, [artifact.documentId, artifact.content, saveContentToLocalStorage]);
 
+  // Add a more robust document content recovery system
   useEffect(() => {
+    // Only proceed if we have a document ID from the result
     if (result?.id && typeof window !== 'undefined') {
       const documentId = result.id;
       const storageKey = `document-content-${documentId}`;
       
       try {
+        // Check localStorage for cached content for this document
         const cachedContent = localStorage.getItem(storageKey);
         
         if (cachedContent) {
           console.log(`Retrieved cached content for document ${documentId} early in render cycle`);
           
+          // If we already have the document loaded, enrich it with the cached content
           if (previewDocument) {
             (previewDocument as any).content = cachedContent;
           }
           
+          // Also update the artifact state to ensure content is available even before document loads
           setArtifact(current => ({
             ...current,
             content: cachedContent
@@ -105,11 +110,13 @@ export function DocumentPreview({
     }
   }, [result?.id, previewDocument, setArtifact]);
 
+  // Second check for content recovery when document is loaded from API
   useEffect(() => {
     if (previewDocument && typeof window !== 'undefined') {
       const storageKey = `document-content-${previewDocument.id}`;
       
       try {
+        // Check if content is already available (either from database or previous effect)
         if (!(previewDocument as any).content) {
           const cachedContent = localStorage.getItem(storageKey);
           
@@ -117,6 +124,7 @@ export function DocumentPreview({
             console.log(`Retrieved cached content for document ${previewDocument.id} after document loaded`);
             (previewDocument as any).content = cachedContent;
             
+            // Update artifact state with content if not already updated
             setArtifact(current => {
               if (!current.content && current.documentId === previewDocument.id) {
                 return {
@@ -127,15 +135,12 @@ export function DocumentPreview({
               return current;
             });
           }
-        } else if ((previewDocument as any).content) {
-          // Save content to localStorage if it exists in the document but hasn't been saved yet
-          saveContentToLocalStorage(previewDocument.id, (previewDocument as any).content);
         }
       } catch (error) {
         console.error('Error retrieving content from localStorage:', error);
       }
     }
-  }, [previewDocument, setArtifact, saveContentToLocalStorage]);
+  }, [previewDocument, setArtifact]);
 
   if (artifact.isVisible) {
     if (result) {
@@ -263,20 +268,28 @@ const PureHitboxLayer = ({
       }
 
       // Always set isVisible to true and ensure all required properties are set
-      setArtifact((artifact) => ({
-        ...artifact,
-        title: result?.title || artifact.title || 'Untitled',
-        documentId: result?.id || artifact.documentId,
-        kind: result?.kind || artifact.kind || 'text',
-        content: savedContent || artifact.content || '',
-        isVisible: true, // Ensure visibility is always set to true on click
-        boundingBox: {
-          left: boundingBox.x,
-          top: boundingBox.y,
-          width: boundingBox.width,
-          height: boundingBox.height,
-        },
-      }));
+      setArtifact((artifact) => {
+        console.log("Setting artifact visibility to true", {
+          currentVisibility: artifact.isVisible,
+          documentId: result?.id || artifact.documentId,
+          kind: result?.kind || artifact.kind
+        });
+        
+        return {
+          ...artifact,
+          title: result?.title || artifact.title || 'Untitled',
+          documentId: result?.id || artifact.documentId,
+          kind: result?.kind || artifact.kind || 'text',
+          content: savedContent || artifact.content || '',
+          isVisible: true, // Force visibility to true on click
+          boundingBox: {
+            left: boundingBox.x,
+            top: boundingBox.y,
+            width: boundingBox.width,
+            height: boundingBox.height,
+          },
+        };
+      });
     },
     [setArtifact, result],
   );
