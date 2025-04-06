@@ -62,13 +62,16 @@ const initialCorState: CorState = {
   "🗣": "Low"
 };
 
-// Helper function to ensure consistent formatting without ET prefix
+// Updated helper function to properly clean all CoR-related content
 function formatResponse(text: string): string {
   if (!text) return "";
   
+  // Clean the text of any CoR tags and their content
+  text = text.replace(/<CoRUpdate>[\s\S]*?<\/CoRUpdate>/g, '').trim();
+  
   // Remove any existing ET: prefix
   if (text.startsWith("ET:")) {
-    return text.substring(3).trim();
+    text = text.substring(3).trim();
   }
   
   return text.trim();
@@ -435,7 +438,7 @@ export async function POST(request: Request) {
               
               // Generate a response showing the CoR state
               const responseId = generateUUID();
-              const responseText = `\n\`\`\`json\n${formattedCorState}\n\`\`\``;
+              const responseText = `\`\`\`json\n${formattedCorState}\n\`\`\``;
               
               // Save the response to the database
               await saveMessages({
@@ -1046,7 +1049,11 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
         
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
-          system: enhancedSystemPrompt,
+          system: enhancedSystemPrompt + (
+            selectedChatModel === 'echotango-reasoning-bit' 
+              ? "\n\nNever output <CoRUpdate> tags directly to the user. These should be automatically removed by the system. IMPORTANT: Generate complete, valid JSON within <CoRUpdate> tags." 
+              : ""
+          ),
           messages: messagesForAI, // Use filtered messages instead of original messages
           maxSteps: 5,
           experimental_activeTools: [
@@ -1107,14 +1114,11 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                       corState = JSON.parse(cleanedContent);
                       console.log("Extracted CoR state:", JSON.stringify(corState, null, 2));
                       
-                      // Remove the CoR tag from the visible response
-                      const cleanText = fullText.replace(/<CoRUpdate>[\s\S]*?<\/CoRUpdate>/, '').trim();
-                      
-                      // Format the response without ET: prefix
+                      // Format the response to remove CoR tags and ET: prefix
                       const textPart = assistantMessage.parts.find(part => part.type === 'text');
                       if (textPart) {
-                        const updatedText = formatResponse(cleanText);
-                        console.log("Formatted response text");
+                        const updatedText = formatResponse(fullText);
+                        console.log("Formatted response text, removing CoR tags");
                         
                         assistantMessage.parts = assistantMessage.parts.map(part => {
                           if (part.type === 'text') {
@@ -1129,11 +1133,11 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                   } else {
                     console.log("No CoR state found in response");
                     
-                    // Format the response without ET: prefix
+                    // Format the response to remove CoR tags and ET: prefix
                     const textPart = assistantMessage.parts.find(part => part.type === 'text');
                     if (textPart) {
                       const updatedText = formatResponse(fullText);
-                      console.log("Formatted response text");
+                      console.log("Formatted response text, removing CoR tags");
                       
                       assistantMessage.parts = assistantMessage.parts.map(part => {
                         if (part.type === 'text') {
