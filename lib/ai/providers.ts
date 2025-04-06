@@ -19,6 +19,7 @@ export const embeddingModel = openai('text-embedding-3-large');
 
 // Explicitly define the model to use
 const openaiModel = 'gpt-4o-mini';
+const reasoningModelName = 'o3-mini'; // New model specifically for reasoning-bit
 
 export const myProvider = isTestEnvironment
   ? customProvider({
@@ -34,7 +35,7 @@ export const myProvider = isTestEnvironment
       languageModels: {
         'openai-chat-model': openai(openaiModel),
         'echotango-bit': openai(openaiModel),
-        'echotango-reasoning-bit': openai(openaiModel), // Using the same model as the others
+        'echotango-reasoning-bit': openai(reasoningModelName), // Using the specialized reasoning model
         'title-model': openai(openaiModel),
         'artifact-model': openai(openaiModel),
       },
