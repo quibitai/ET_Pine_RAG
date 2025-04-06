@@ -10,15 +10,15 @@ import { generateEmbeddings } from './ai/utils';
 import { Client as QStashClient } from '@upstash/qstash';
 
 // Environment variables
-const GOOGLE_CREDENTIALS_JSON_CONTENT = process.env.GOOGLE_CREDENTIALS_JSON;
+const GOOGLE_CREDENTIALS_JSON_CONTENT = process.env.GOOGLE_CREDENTIALS_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
 
 // Parse credentials first to potentially extract project ID
-let credentialsProjectId = '';
+let PROJECT_ID = '';
 try {
   if (GOOGLE_CREDENTIALS_JSON_CONTENT) {
     const parsedCredentials = JSON.parse(GOOGLE_CREDENTIALS_JSON_CONTENT);
-    credentialsProjectId = parsedCredentials.project_id || '';
-    console.log(`Extracted project_id from credentials: "${credentialsProjectId}"`);
+    PROJECT_ID = parsedCredentials.project_id || '';
+    console.log(`Extracted project_id from credentials: "${PROJECT_ID}"`);
   }
 } catch (e) {
   console.error("Failed to parse GOOGLE_CREDENTIALS_JSON to extract project_id:", e);
@@ -33,7 +33,6 @@ function ensureCompleteUrl(url: string): string {
 }
 
 // Environment variables with fallbacks
-const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || credentialsProjectId || '';
 const LOCATION = process.env.DOCUMENT_AI_LOCATION || 'us'; // e.g., 'us'
 const PROCESSOR_ID = process.env.DOCUMENT_AI_PROCESSOR_ID || '';
 
