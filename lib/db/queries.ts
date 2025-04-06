@@ -668,6 +668,7 @@ export async function getUserDocuments({
         // The folderPath property is explicitly declared in our schema
         // but may not be present in the actual database until migration runs
         folderPath: documents.folderPath,
+        content: documents.content,
       })
       .from(documents)
       .where(eq(documents.userId, userId))
@@ -702,6 +703,7 @@ export async function getUserDocuments({
             title: documents.title,
             // Add null for folderPath to maintain interface compatibility
             folderPath: null as any,
+            content: null as any,
           })
           .from(documents)
           .where(eq(documents.userId, userId))
