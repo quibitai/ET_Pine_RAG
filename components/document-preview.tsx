@@ -60,20 +60,59 @@ export function DocumentPreview({
   }, [artifact.documentId, setArtifact]);
 
   useEffect(() => {
-    if (previewDocument && typeof window !== 'undefined') {
+    if (result?.id && typeof window !== 'undefined') {
+      const documentId = result.id;
+      const storageKey = `document-content-${documentId}`;
+      
       try {
-        const storageKey = `document-content-${previewDocument.id}`;
         const cachedContent = localStorage.getItem(storageKey);
         
         if (cachedContent) {
-          console.log(`Retrieved cached content for document ${previewDocument.id} from localStorage`);
-          (previewDocument as any).content = cachedContent;
+          console.log(`Retrieved cached content for document ${documentId} early in render cycle`);
+          
+          if (previewDocument) {
+            (previewDocument as any).content = cachedContent;
+          }
+          
+          setArtifact(current => ({
+            ...current,
+            content: cachedContent
+          }));
         }
       } catch (error) {
         console.error('Error retrieving content from localStorage:', error);
       }
     }
-  }, [previewDocument]);
+  }, [result?.id, previewDocument, setArtifact]);
+
+  useEffect(() => {
+    if (previewDocument && typeof window !== 'undefined') {
+      const storageKey = `document-content-${previewDocument.id}`;
+      
+      try {
+        if (!(previewDocument as any).content) {
+          const cachedContent = localStorage.getItem(storageKey);
+          
+          if (cachedContent) {
+            console.log(`Retrieved cached content for document ${previewDocument.id} after document loaded`);
+            (previewDocument as any).content = cachedContent;
+            
+            setArtifact(current => {
+              if (!current.content && current.documentId === previewDocument.id) {
+                return {
+                  ...current,
+                  content: cachedContent
+                };
+              }
+              return current;
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error retrieving content from localStorage:', error);
+      }
+    }
+  }, [previewDocument, setArtifact]);
 
   if (artifact.isVisible) {
     if (result) {
@@ -265,9 +304,9 @@ const DocumentContent = ({ document }: { document: ArtifactDocument }) => {
   const { artifact } = useArtifact();
 
   const containerClassName = cn(
-    'h-[257px] overflow-y-scroll border rounded-b-2xl dark:bg-muted border-t-0 dark:border-zinc-700',
+    'h-[257px] overflow-y-scroll border rounded-b-2xl dark:bg-muted border-t-0 dark:border-zinc-700 w-full',
     {
-      'p-4 sm:px-14 sm:py-16': document.kind === 'text',
+      'p-4': document.kind === 'text',
       'p-0': document.kind === 'code',
     },
   );
@@ -284,7 +323,9 @@ const DocumentContent = ({ document }: { document: ArtifactDocument }) => {
   return (
     <div className={containerClassName}>
       {document.kind === 'text' ? (
-        <Editor {...commonProps} onSaveContent={() => {}} />
+        <div className="w-full max-w-full">
+          <Editor {...commonProps} onSaveContent={() => {}} />
+        </div>
       ) : document.kind === 'code' ? (
         <div className="flex flex-1 relative w-full">
           <div className="absolute inset-0">

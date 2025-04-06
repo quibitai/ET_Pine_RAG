@@ -290,6 +290,67 @@ function PureArtifact({
     }
   }, [artifact.documentId, artifactDefinition, setMetadata]);
 
+  // Add an effect to ensure content is saved when navigating away
+  useEffect(() => {
+    if (!artifact || !artifact.documentId || artifact.documentId === 'init') {
+      return;
+    }
+
+    // Function to save content to localStorage
+    const saveContentToStorage = () => {
+      try {
+        if (artifact.content && typeof window !== 'undefined') {
+          const storageKey = `document-content-${artifact.documentId}`;
+          localStorage.setItem(storageKey, artifact.content);
+          console.log(`Emergency saved document content to localStorage: ${storageKey}`);
+        }
+      } catch (error) {
+        console.error('Failed to emergency save document content to localStorage:', error);
+      }
+    };
+
+    // Save content when page visibility changes (tab switching/minimizing)
+    const handleVisibilityChange = () => {
+      if (typeof window !== 'undefined' && window.document.visibilityState === 'hidden') {
+        saveContentToStorage();
+      }
+    };
+
+    // Save content before unloading the page
+    const handleBeforeUnload = () => {
+      saveContentToStorage();
+    };
+
+    // Add event listeners
+    if (typeof window !== 'undefined') {
+      window.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      
+      // Cleanup event listeners on component unmount
+      return () => {
+        window.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
+    }
+    
+    return undefined;
+  }, [artifact]);
+
+  // Enhanced useEffect for when document content changes
+  useEffect(() => {
+    if (artifact.content && artifact.documentId !== 'init') {
+      try {
+        if (typeof window !== 'undefined') {
+          const storageKey = `document-content-${artifact.documentId}`;
+          localStorage.setItem(storageKey, artifact.content);
+          console.log(`Auto-saved document content to localStorage: ${storageKey}`);
+        }
+      } catch (error) {
+        console.error('Failed to auto-save document content to localStorage:', error);
+      }
+    }
+  }, [artifact.content, artifact.documentId]);
+
   return (
     <AnimatePresence>
       {artifact.isVisible && (

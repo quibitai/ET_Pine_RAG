@@ -32,7 +32,14 @@ export async function GET(request: Request) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  return Response.json(documents, { status: 200 });
+  // Add a response header to let the client know it should check for localStorage content
+  const headers = new Headers();
+  headers.append('X-Document-Check-Storage', 'true');
+  
+  return Response.json(documents, { 
+    status: 200,
+    headers
+  });
 }
 
 export async function POST(request: Request) {
