@@ -62,6 +62,18 @@ const initialCorState: CorState = {
   "🗣": "Low"
 };
 
+// Helper function to ensure consistent formatting without ET prefix
+function formatResponse(text: string): string {
+  if (!text) return "";
+  
+  // Remove any existing ET: prefix
+  if (text.startsWith("ET:")) {
+    return text.substring(3).trim();
+  }
+  
+  return text.trim();
+}
+
 /**
  * Enhanced version that fetches document metadata from the database for attachments
  * to ensure proper content types are used instead of application/octet-stream
@@ -423,7 +435,7 @@ export async function POST(request: Request) {
               
               // Generate a response showing the CoR state
               const responseId = generateUUID();
-              const responseText = `ET: \n\`\`\`json\n${formattedCorState}\n\`\`\``;
+              const responseText = `\n\`\`\`json\n${formattedCorState}\n\`\`\``;
               
               // Save the response to the database
               await saveMessages({
@@ -463,7 +475,7 @@ export async function POST(request: Request) {
                   const result = streamText({
                     model: myProvider.languageModel(selectedChatModel),
                     system: "Just return the exact text provided, nothing more.",
-                    messages: [{ role: 'user', content: "ET: No previous reasoning state found." }],
+                    messages: [{ role: 'user', content: "No previous reasoning state found." }],
                     experimental_generateMessageId: generateUUID,
                   });
                   
@@ -481,7 +493,7 @@ export async function POST(request: Request) {
                 const result = streamText({
                   model: myProvider.languageModel(selectedChatModel),
                   system: "Just return the exact text provided, nothing more.",
-                  messages: [{ role: 'user', content: "ET: Error retrieving previous reasoning state." }],
+                  messages: [{ role: 'user', content: "Error retrieving previous reasoning state." }],
                   experimental_generateMessageId: generateUUID,
                 });
                 
@@ -499,7 +511,7 @@ export async function POST(request: Request) {
               const result = streamText({
                 model: myProvider.languageModel(selectedChatModel),
                 system: "Just return the exact text provided, nothing more.",
-                messages: [{ role: 'user', content: "ET: No previous assistant message found." }],
+                messages: [{ role: 'user', content: "No previous assistant message found." }],
                 experimental_generateMessageId: generateUUID,
               });
               
@@ -535,7 +547,7 @@ export async function POST(request: Request) {
         
         // Generate a response with the mandated welcome message
         const responseId = generateUUID();
-        const welcomeMessage = "ET: Hello, I am **Echo Tango** What can I help you accomplish today?";
+        const welcomeMessage = "Hello, I am Echo Tango. What can I help you accomplish today?";
         
         // Save the welcome message with the initial CoR state
         await saveMessages({
@@ -1079,7 +1091,7 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                   messages: [userMessage],
                   responseMessages: response.messages,
                 });
-                
+
                 // Handle CoR state for EchoTango Reasoning Bit
                 let corState = null;
                 if (selectedChatModel === 'echotango-reasoning-bit' && assistantMessage && assistantMessage.parts) {
@@ -1098,37 +1110,37 @@ Then generate your actual user-visible response (starting with "ET: ") and endin
                       // Remove the CoR tag from the visible response
                       const cleanText = fullText.replace(/<CoRUpdate>[\s\S]*?<\/CoRUpdate>/, '').trim();
                       
-                      // Check if the response starts with "ET: "
-                      let formattedText = cleanText;
-                      if (!cleanText.startsWith("ET:")) {
-                        formattedText = "ET: " + cleanText;
-                        console.log("Added 'ET:' prefix to response");
+                      // Format the response without ET: prefix
+                      const textPart = assistantMessage.parts.find(part => part.type === 'text');
+                      if (textPart) {
+                        const updatedText = formatResponse(cleanText);
+                        console.log("Formatted response text");
+                        
+                        assistantMessage.parts = assistantMessage.parts.map(part => {
+                          if (part.type === 'text') {
+                            return { ...part, text: updatedText };
+                          }
+                          return part;
+                        });
                       }
-                      
-                      // Update the assistant message text
-                      assistantMessage.parts = assistantMessage.parts.map(part => {
-                        if (part.type === 'text') {
-                          return { ...part, text: formattedText };
-                        }
-                        return part;
-                      });
                     } catch (error) {
                       console.error("Error parsing CoR state:", error);
                     }
                   } else {
                     console.log("No CoR state found in response");
                     
-                    // Check if the response needs the "ET:" prefix
+                    // Format the response without ET: prefix
                     const textPart = assistantMessage.parts.find(part => part.type === 'text');
-                    if (textPart && !textPart.text.startsWith("ET:")) {
-                      const updatedText = "ET: " + textPart.text;
+                    if (textPart) {
+                      const updatedText = formatResponse(fullText);
+                      console.log("Formatted response text");
+                      
                       assistantMessage.parts = assistantMessage.parts.map(part => {
                         if (part.type === 'text') {
                           return { ...part, text: updatedText };
                         }
                         return part;
                       });
-                      console.log("Added 'ET:' prefix to response");
                     }
                   }
                 }
