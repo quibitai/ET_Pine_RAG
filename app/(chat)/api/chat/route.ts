@@ -13,6 +13,7 @@ import {
   saveChat,
   saveMessages,
   getDocumentById,
+  getMessageById,
 } from '@/lib/db/queries';
 import {
   generateUUID,
@@ -347,6 +348,210 @@ export async function POST(request: Request) {
 
     console.log("User message found", userMessage.id);
 
+    // Special handling for EchoTango Reasoning Bit
+    if (selectedChatModel === 'echotango-reasoning-bit') {
+      // Check for 'show CoR' trigger
+      if (userMessage.parts[0] && 
+          'text' in userMessage.parts[0] && 
+          userMessage.parts[0].text.trim().toLowerCase() === 'show cor') {
+        console.log("'show CoR' trigger detected for EchoTango Reasoning Bit");
+        
+        // Get the last assistant message to retrieve its CoR state
+        // Find the most recent assistant message before the current user message
+        let lastAssistantMessage = null;
+        for (let i = messages.length - 2; i >= 0; i--) {
+          if (messages[i].role === 'assistant') {
+            lastAssistantMessage = messages[i];
+            break;
+          }
+        }
+        
+        if (lastAssistantMessage) {
+          // Try to get the full message with CoR state from the database
+          try {
+            const dbMessage = await getMessageById({ id: lastAssistantMessage.id });
+            
+            if (dbMessage && dbMessage.corState) {
+              console.log("Retrieved CoR state from database for message:", lastAssistantMessage.id);
+              
+              // Create a response with formatted CoR state
+              const formattedCorState = JSON.stringify(dbMessage.corState, null, 2);
+              
+              // Save the user's 'show CoR' message
+              await saveMessages({
+                messages: [
+                  {
+                    chatId: id,
+                    id: userMessage.id,
+                    role: 'user',
+                    parts: userMessage.parts,
+                    attachments: userMessage.experimental_attachments ?? [],
+                    createdAt: new Date(),
+                  },
+                ],
+              });
+              
+              // Generate a response showing the CoR state
+              const responseId = generateUUID();
+              const responseText = `ET: \n\`\`\`json\n${formattedCorState}\n\`\`\``;
+              
+              // Save the response to the database
+              await saveMessages({
+                messages: [
+                  {
+                    chatId: id,
+                    id: responseId,
+                    role: 'assistant',
+                    parts: [{ type: 'text', text: responseText }],
+                    attachments: [],
+                    createdAt: new Date(),
+                  },
+                ],
+              });
+              
+              // Return a data stream response with just the formatted CoR state
+              return createDataStreamResponse({
+                execute: (dataStream) => {
+                  const result = streamText({
+                    model: myProvider.languageModel(selectedChatModel),
+                    system: "Just return the exact text provided, nothing more.",
+                    messages: [{ role: 'user', content: responseText }],
+                    experimental_generateMessageId: () => responseId,
+                  });
+                  
+                  result.consumeStream();
+                  result.mergeIntoDataStream(dataStream);
+                },
+              });
+            } else {
+              console.log("No CoR state found for last assistant message");
+              
+              // Return a simple response if no CoR state found
+              return createDataStreamResponse({
+                execute: (dataStream) => {
+                  const result = streamText({
+                    model: myProvider.languageModel(selectedChatModel),
+                    system: "Just return the exact text provided, nothing more.",
+                    messages: [{ role: 'user', content: "ET: No previous reasoning state found." }],
+                    experimental_generateMessageId: generateUUID,
+                  });
+                  
+                  result.consumeStream();
+                  result.mergeIntoDataStream(dataStream);
+                },
+              });
+            }
+          } catch (error) {
+            console.error("Error retrieving CoR state:", error);
+            
+            // Return an error response
+            return createDataStreamResponse({
+              execute: (dataStream) => {
+                const result = streamText({
+                  model: myProvider.languageModel(selectedChatModel),
+                  system: "Just return the exact text provided, nothing more.",
+                  messages: [{ role: 'user', content: "ET: Error retrieving previous reasoning state." }],
+                  experimental_generateMessageId: generateUUID,
+                });
+                
+                result.consumeStream();
+                result.mergeIntoDataStream(dataStream);
+              },
+            });
+          }
+        } else {
+          console.log("No previous assistant message found");
+          
+          // Return a simple response if no previous assistant message
+          return createDataStreamResponse({
+            execute: (dataStream) => {
+              const result = streamText({
+                model: myProvider.languageModel(selectedChatModel),
+                system: "Just return the exact text provided, nothing more.",
+                messages: [{ role: 'user', content: "ET: No previous assistant message found." }],
+                experimental_generateMessageId: generateUUID,
+              });
+              
+              result.consumeStream();
+              result.mergeIntoDataStream(dataStream);
+            },
+          });
+        }
+      }
+      
+      // Special handling for /start command
+      const isFirstMessage = messages.length === 1; // Only the current user message
+      if (isFirstMessage && 
+          userMessage.parts[0] && 
+          'text' in userMessage.parts[0] && 
+          userMessage.parts[0].text.trim().toLowerCase() === '/start') {
+        console.log("/start command detected for first message with EchoTango Reasoning Bit");
+        
+        // Save the user's '/start' message
+        await saveMessages({
+          messages: [
+            {
+              chatId: id,
+              id: userMessage.id,
+              role: 'user',
+              parts: userMessage.parts,
+              attachments: userMessage.experimental_attachments ?? [],
+              createdAt: new Date(),
+            },
+          ],
+        });
+        
+        // Generate a response with the mandated welcome message
+        const responseId = generateUUID();
+        const welcomeMessage = "ET: Hello, I am **Echo Tango** What can I help you accomplish today?";
+        
+        // Initialize the default CoR state
+        const initialCorState = {
+          "🗺️": "Unknown",
+          "🚦": 0,
+          "👍🏼": "Unknown",
+          "🔧": "Waiting to adjust based on response",
+          "🧭": [
+            "1. Gather information from the user",
+            "2. Come up with a plan to help the user",
+            "3. Help the user achieve their goal(s)"
+          ],
+          "🧠": "Expertise in gathering context, specializing in goal achievement using user input",
+          "🗣": "Low"
+        };
+        
+        // Save the welcome message with the initial CoR state
+        await saveMessages({
+          messages: [
+            {
+              chatId: id,
+              id: responseId,
+              role: 'assistant',
+              parts: [{ type: 'text', text: welcomeMessage }],
+              attachments: [],
+              createdAt: new Date(),
+              corState: initialCorState,
+            },
+          ],
+        });
+        
+        // Return a data stream response with just the welcome message
+        return createDataStreamResponse({
+          execute: (dataStream) => {
+            const result = streamText({
+              model: myProvider.languageModel(selectedChatModel),
+              system: "Just return the exact text provided, nothing more.",
+              messages: [{ role: 'user', content: welcomeMessage }],
+              experimental_generateMessageId: () => responseId,
+            });
+            
+            result.consumeStream();
+            result.mergeIntoDataStream(dataStream);
+          },
+        });
+      }
+    }
+
     console.time('get_chat_data');
     const chat = await getChatById({ id });
     console.timeEnd('get_chat_data');
@@ -642,6 +847,89 @@ ${contextText}
 
 ${contextInstructions}`;
     }
+
+    // Specialized prompt enhancement for EchoTango Reasoning Bit
+    if (selectedChatModel === 'echotango-reasoning-bit') {
+      console.log("Preparing specialized prompt for EchoTango Reasoning Bit");
+      
+      // Get current CoR state from the most recent assistant message
+      let currentCorState = null;
+      let lastAssistantMessage = null;
+      
+      // Find the most recent assistant message
+      for (let i = messages.length - 2; i >= 0; i--) {
+        if (messages[i].role === 'assistant') {
+          lastAssistantMessage = messages[i];
+          break;
+        }
+      }
+      
+      if (lastAssistantMessage) {
+        // Try to get the CoR state from the database
+        try {
+          const dbMessage = await getMessageById({ id: lastAssistantMessage.id });
+          
+          if (dbMessage && dbMessage.corState) {
+            currentCorState = dbMessage.corState;
+            console.log("Retrieved CoR state from database:", JSON.stringify(currentCorState, null, 2));
+          }
+        } catch (error) {
+          console.error("Error retrieving CoR state:", error);
+        }
+      }
+      
+      if (!currentCorState) {
+        // Use default CoR state if none found
+        currentCorState = {
+          "🗺️": "Unknown",
+          "🚦": 0,
+          "👍🏼": "Unknown",
+          "🔧": "Waiting to adjust based on response",
+          "🧭": [
+            "1. Gather information from the user",
+            "2. Come up with a plan to help the user",
+            "3. Help the user achieve their goal(s)"
+          ],
+          "🧠": "Expertise in gathering context, specializing in goal achievement using user input",
+          "🗣": "Low"
+        };
+        console.log("Using default CoR state:", JSON.stringify(currentCorState, null, 2));
+      }
+      
+      // Inject current CoR state into the system prompt
+      const currentCorStateString = JSON.stringify(currentCorState, null, 2);
+      enhancedSystemPrompt = `${enhancedSystemPrompt}\n\n# CURRENT CoR STATE:\n\`\`\`json\n${currentCorStateString}\n\`\`\`\n\n# TASK:\nUpdate the CoR based on the user message and conversation history, then generate the response following all rules.`;
+      
+      // If context is available, enhance CoR with context-aware information
+      if (contextText && currentCorState) {
+        console.log("Enhancing CoR with context awareness");
+        
+        // If we have a specific goal in the CoR, use it to enhance the RAG query
+        if (currentCorState["🗺️"] && currentCorState["🗺️"] !== "Unknown") {
+          console.log(`Using goal from CoR for context relevance: ${currentCorState["🗺️"]}`);
+          enhancedSystemPrompt += `\n\nWhen generating your response, focus particularly on information in the context that relates to the user's goal: "${currentCorState["🗺️"]}".`;
+        }
+        
+        // If we have specific expertise in the CoR, highlight it
+        if (currentCorState["🧠"] && currentCorState["🧠"] !== "Expertise in gathering context, specializing in goal achievement using user input") {
+          console.log(`Using expertise from CoR: ${currentCorState["🧠"]}`);
+          enhancedSystemPrompt += `\n\nApply your expertise in: "${currentCorState["🧠"]}" when analyzing the context.`;
+        }
+      }
+      
+      // Add a structure extraction instruction to get the updated CoR state
+      enhancedSystemPrompt += `\n\n# IMPORTANT INSTRUCTION FOR CoR UPDATE:
+Before generating your visible response, think through and update the CoR state based on this conversation.
+Then include your updated CoR state in the response within an XML-like tag that will be parsed out and not shown to the user:
+<CoRUpdate>
+{
+  // Your updated CoR JSON here, including all keys from the current state, modified as needed
+}
+</CoRUpdate>
+
+Then generate your actual user-visible response (starting with "ET: ") and ending with the 4 follow-up questions.`;
+    }
+
     console.timeEnd('prepare_prompt');
 
     console.log("Creating data stream response with model:", selectedChatModel);
@@ -769,7 +1057,61 @@ ${contextInstructions}`;
                   messages: [userMessage],
                   responseMessages: response.messages,
                 });
+                
+                // Handle CoR state for EchoTango Reasoning Bit
+                let corState = null;
+                if (selectedChatModel === 'echotango-reasoning-bit') {
+                  // Extract CoR state from the response
+                  const fullText = assistantMessage.parts.find(part => part.type === 'text')?.text || '';
+                  
+                  // Extract the CoR state using regex
+                  const corMatch = fullText.match(/<CoRUpdate>([\s\S]*?)<\/CoRUpdate>/);
+                  if (corMatch && corMatch[1]) {
+                    try {
+                      // Clean up the content and parse it as JSON
+                      const cleanedContent = corMatch[1].trim();
+                      corState = JSON.parse(cleanedContent);
+                      console.log("Extracted CoR state:", JSON.stringify(corState, null, 2));
+                      
+                      // Remove the CoR tag from the visible response
+                      const cleanText = fullText.replace(/<CoRUpdate>[\s\S]*?<\/CoRUpdate>/, '').trim();
+                      
+                      // Check if the response starts with "ET: "
+                      let formattedText = cleanText;
+                      if (!cleanText.startsWith("ET:")) {
+                        formattedText = "ET: " + cleanText;
+                        console.log("Added 'ET:' prefix to response");
+                      }
+                      
+                      // Update the assistant message text
+                      assistantMessage.parts = assistantMessage.parts.map(part => {
+                        if (part.type === 'text') {
+                          return { ...part, text: formattedText };
+                        }
+                        return part;
+                      });
+                    } catch (error) {
+                      console.error("Error parsing CoR state:", error);
+                    }
+                  } else {
+                    console.log("No CoR state found in response");
+                    
+                    // Check if the response needs the "ET:" prefix
+                    const textPart = assistantMessage.parts.find(part => part.type === 'text');
+                    if (textPart && !textPart.text.startsWith("ET:")) {
+                      const updatedText = "ET: " + textPart.text;
+                      assistantMessage.parts = assistantMessage.parts.map(part => {
+                        if (part.type === 'text') {
+                          return { ...part, text: updatedText };
+                        }
+                        return part;
+                      });
+                      console.log("Added 'ET:' prefix to response");
+                    }
+                  }
+                }
 
+                // Save the message to the database
                 await saveMessages({
                   messages: [
                     {
@@ -780,6 +1122,7 @@ ${contextInstructions}`;
                       attachments:
                         assistantMessage.experimental_attachments ?? [],
                       createdAt: new Date(),
+                      ...(corState ? { corState } : {}),
                     },
                   ],
                 });

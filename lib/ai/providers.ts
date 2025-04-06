@@ -25,6 +25,7 @@ export const myProvider = isTestEnvironment
       languageModels: {
         'openai-chat-model': chatModel, // Mock for test environment
         'echotango-bit': chatModel, // Mock for EchoTango Bit
+        'echotango-reasoning-bit': chatModel, // Mock for EchoTango Reasoning Bit
         'title-model': titleModel,
         'artifact-model': artifactModel,
       },
@@ -33,6 +34,7 @@ export const myProvider = isTestEnvironment
       languageModels: {
         'openai-chat-model': openai(openaiModel),
         'echotango-bit': openai(openaiModel),
+        'echotango-reasoning-bit': openai(openaiModel), // Using the same model as the others
         'title-model': openai(openaiModel),
         'artifact-model': openai(openaiModel),
       },

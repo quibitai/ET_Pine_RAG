@@ -329,7 +329,7 @@ export async function getSuggestionsByDocumentId({
 
 export async function getMessageById({ id }: { id: string }) {
   try {
-    return await db.select().from(message).where(eq(message.id, id));
+    return await db.select().from(message).where(eq(message.id, id)).limit(1);
   } catch (error) {
     console.error('Failed to get message by id from database');
     throw error;
@@ -744,6 +744,24 @@ export async function saveQueuedDocument({
     return insertedDocument;
   } catch (error) {
     console.error('Failed to save queued document in database', error);
+    throw error;
+  }
+}
+
+export async function updateMessageCorState({
+  id,
+  corState,
+}: {
+  id: string;
+  corState: any;
+}) {
+  try {
+    return await db
+      .update(message)
+      .set({ corState })
+      .where(eq(message.id, id));
+  } catch (error) {
+    console.error('Failed to update message corState in database');
     throw error;
   }
 }

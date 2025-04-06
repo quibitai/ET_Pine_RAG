@@ -16,5 +16,10 @@ export const chatModels: Array<ChatModel> = [
     id: 'echotango-bit',
     name: 'EchoTango Bit',
     description: 'Echo Tango\'s AI Assistant',
+  },
+  {
+    id: 'echotango-reasoning-bit',
+    name: 'EchoTango Reasoning Bit',
+    description: 'Advanced ET Assistant w/ Chain of Reason',
   }
 ];
