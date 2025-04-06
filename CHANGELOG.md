@@ -2,6 +2,20 @@
 
 All notable changes to the ET Pine RAG project will be documented in this file.
 
+## [2.0.0] - 2024-06-21
+
+### Added
+- New "EchoTango Reasoning Bit" persona with Chain of Reason (CoR) framework
+- Advanced reasoning capabilities for more sophisticated assistance
+- Special commands for reasoning persona:
+  - `/start` displays the welcome message for first-time users
+  - `show CoR` displays the reasoning chain for debugging
+
+### Changed
+- Enhanced system prompts with specialized reasoning and goal-tracking
+- Updated schema to store reasoning state in database
+- Improved RAG queries with context-aware reasoning
+
 ## [1.9.0] - 2024-06-21
 
 ### Changed
