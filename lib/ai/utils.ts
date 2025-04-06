@@ -2,6 +2,8 @@
 
 // Import OpenAI for embeddings
 import OpenAI from 'openai';
+import { generateText } from 'ai';
+import { myProvider } from './providers';
 
 // Initialize with OpenAI for text-embedding-3-large
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
@@ -10,6 +12,47 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
 });
+
+/**
+ * Enhances a user search query using an LLM to optimize it for web search
+ * @param originalQuery The original query from the user
+ * @param chatHistory Optional conversation context to improve query enhancement
+ * @returns An enhanced query string optimized for web search
+ */
+export async function enhanceSearchQuery(
+  originalQuery: string,
+  chatHistory?: string
+): Promise<string> {
+  try {
+    console.time('enhance_search_query');
+    console.log(`Enhancing search query: "${originalQuery}"`);
+    
+    // Construct the prompt for the LLM
+    const prompt = `Optimize the following user query for a web search engine like Tavily. 
+Return only the single best search query string that will provide the most relevant and comprehensive results.
+${chatHistory ? `\nConversation Context: ${chatHistory}` : ''}
+\nUser Query: "${originalQuery}"`;
+
+    // Use a fast model for quick response
+    const { text: enhancedQuery } = await generateText({
+      model: myProvider.languageModel('openai-chat-model'),
+      system: 'You are a search query optimization assistant. Your job is to reformulate user queries to improve web search results. Return ONLY the optimized query text with no additional commentary, explanation, or formatting.',
+      prompt: prompt,
+    });
+
+    const cleanedQuery = enhancedQuery.trim().replace(/^["']|["']$/g, ''); // Remove quotes if the model added them
+    
+    console.log(`Enhanced query: "${cleanedQuery}"`);
+    console.timeEnd('enhance_search_query');
+    
+    return cleanedQuery;
+  } catch (error) {
+    // Log error but don't fail - fall back to original query
+    console.error('Error enhancing search query:', error);
+    console.log('Falling back to original query');
+    return originalQuery;
+  }
+}
 
 /**
  * Generates vector embeddings for the given text using OpenAI text-embedding-3-large

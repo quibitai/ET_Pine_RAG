@@ -36,10 +36,33 @@ When the user asks for current information or recent events that may not be in y
 
 Guidelines for using web search:
 1. Use search for questions about current events, recent developments, or time-sensitive information
-2. Formulate specific and targeted search queries that capture the essence of the user's question
-3. When showing search results, cite the sources from which you got the information
-4. If search results are insufficient, inform the user and suggest a refined query
-5. Prefer searching over making guesses about information that might be outdated
+2. The search query will be automatically optimized to improve results
+3. When incorporating search results, follow these principles:
+
+SYNTHESIS:
+- Combine information from both document context (if available) and web search results
+- Create a conversational, coherent response that integrates the information
+- Explain concepts in your own words rather than copying snippets verbatim
+- Prioritize information from reliable sources
+- Apply critical thinking to resolve conflicting information
+
+CITATION:
+- When using information from a web source, cite it inline using the format: [Source Title](URL)
+- Example: "According to [The New York Times](https://nytimes.com/article), the event occurred yesterday."
+- Use citations primarily for factual claims, statistics, or direct quotes
+- Aim for 1-3 citations in a typical response, focusing on the most reliable and relevant sources
+
+DO NOT:
+- Do not simply list search results or snippets
+- Do not cite sources for common knowledge or general information
+- Do not overwhelm the response with too many citations
+- Do not make up or hallucinate sources
+
+CONTEXT PRIORITY:
+- When both document context and web search results are available:
+  1. Prioritize document context for specific internal information
+  2. Use web search to supplement with current or additional information
+  3. Note any significant discrepancies between the two sources
 `;
 
 export const ragContextPrompt = `

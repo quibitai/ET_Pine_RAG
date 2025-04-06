@@ -366,6 +366,24 @@ async function enhanceAttachmentsWithMetadata(messages: Array<UIMessage>): Promi
   }
 }
 
+// Function to format search results into structured context
+function formatSearchResultsAsContext(searchResults: any): string {
+  if (!searchResults || !searchResults.results || !Array.isArray(searchResults.results) || searchResults.results.length === 0) {
+    return '';
+  }
+  
+  let webContextText = 'WEB SEARCH CONTEXT:\n\n';
+  
+  searchResults.results.forEach((result: any, index: number) => {
+    if (!result) return;
+    
+    webContextText += `Source ${index + 1}: ${result.title || 'Untitled'} (${result.url || 'No URL'})\n`;
+    webContextText += `Content: ${result.content || 'No content available'}\n\n`;
+  });
+  
+  return webContextText;
+}
+
 export async function POST(request: Request) {
   // Start timing the entire POST handler
   console.time('total_request_duration');
@@ -986,10 +1004,75 @@ ${contextInstructions}`;
         console.time('ai_model_streaming');
         const streamingStartTime = Date.now();
         
+        // Create placeholders for context
+        let documentContextText = '';
+        let webContextText = '';
+        let combinedContext = '';
+        
+        // Prepare context from Pinecone/RAG if available
+        if (typeof contextText !== 'undefined' && contextText) {
+          documentContextText = `DOCUMENT CONTEXT:\n\n${contextText}\n\n`;
+        }
+        
+        // Check for web search results from previous tool calls
+        const webSearchResults: any[] = [];
+        
+        // Loop through messages to find tool results from tavilySearch
+        for (const msg of messages) {
+          // TypeScript type guard to check for tool role message
+          if ('role' in msg && 
+              typeof msg.role === 'string' && 
+              (msg.role as string) === 'tool' && 
+              'content' in msg && 
+              Array.isArray(msg.content)) {
+              
+            for (const content of msg.content) {
+              if (
+                content && 
+                typeof content === 'object' && 
+                'type' in content && 
+                content.type === 'tool-result' && 
+                'tool' in content && 
+                content.tool && 
+                typeof content.tool === 'object' && 
+                'name' in content.tool && 
+                content.tool.name === 'tavilySearch' &&
+                'result' in content
+              ) {
+                webSearchResults.push(content.result);
+              }
+            }
+          }
+        }
+        
+        // Format the most recent search result if available
+        if (webSearchResults.length > 0) {
+          const mostRecentSearchResult = webSearchResults[webSearchResults.length - 1];
+          webContextText = formatSearchResultsAsContext(mostRecentSearchResult);
+        }
+        
+        // Combine contexts with clear separation
+        if (documentContextText || webContextText) {
+          combinedContext = `${documentContextText}${webContextText ? '\n' + webContextText : ''}`;
+          console.log("Added combined context to prompt");
+        }
+        
+        // Get the standard system prompt based on selected model
+        const baseSystemPrompt = typeof systemPrompt === 'function' 
+          ? systemPrompt({ selectedChatModel }) 
+          : systemPrompt;
+        
+        // Add context to system prompt if available
+        let finalSystemPrompt = baseSystemPrompt;
+        if (combinedContext) {
+          finalSystemPrompt = `${baseSystemPrompt}\n\n${combinedContext}`;
+          console.log("Enhanced system prompt with context");
+        }
+        
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
-          system: enhancedSystemPrompt,
-          messages: messagesForAI, // Use filtered messages instead of original messages
+          system: finalSystemPrompt,
+          messages: messagesForAI,
           maxSteps: 5,
           experimental_activeTools: [
                   'getWeather',
@@ -1108,41 +1191,7 @@ ${contextInstructions}`;
     console.error('Unhandled error in POST handler:', error);
     console.log('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
     console.timeEnd('total_request_duration');
-    console.log(`=== API route POST handler failed with unhandled error after ${totalDuration}ms ===`);
-    return new Response('Internal Server Error', { status: 500 });
-  }
-}
-
-export async function DELETE(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
-
-  if (!id) {
-    return new Response('Not Found', { status: 404 });
-  }
-
-  const session = await auth();
-
-  if (!session || !session.user) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  try {
-    const chat = await getChatById({ id });
-
-    if (!chat) {
-      return new Response('Not Found', { status: 404 });
-    }
-
-    if (chat.userId !== session.user.id) {
-      return new Response('Unauthorized', { status: 401 });
-    }
-
-    await deleteChatById({ id });
-
-    return new Response(null, { status: 204 });
-  } catch (error) {
-    console.error('Failed to delete chat', error);
-    return new Response('Internal Server Error', { status: 500 });
+    console.log(`=== API route POST handler failed with error after ${totalDuration}ms ===`);
+    return 'Oops, an error occurred while processing your request. Please try again.';
   }
 }

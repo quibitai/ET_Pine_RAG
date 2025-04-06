@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
+import { enhanceSearchQuery } from '@/lib/ai/utils';
 
 // Initialize Tavily client with API key from environment variables
 const tvly = tavily({
@@ -14,10 +15,14 @@ export const tavilySearch = tool({
   }),
   execute: async ({ query }) => {
     try {
-      console.log('Executing Tavily search with query:', query);
+      console.log('Received original search query:', query);
       
-      // Perform a search with the Tavily API
-      const response = await tvly.search(query, {
+      // Enhance the query using the LLM-powered function
+      const enhancedQuery = await enhanceSearchQuery(query);
+      console.log('Enhanced search query:', enhancedQuery);
+      
+      // Perform a search with the Tavily API using the enhanced query
+      const response = await tvly.search(enhancedQuery, {
         search_depth: 'advanced',
         include_domains: [],
         exclude_domains: [],
@@ -26,14 +31,30 @@ export const tavilySearch = tool({
 
       console.log('Tavily search response received:', response.results.length, 'results');
       
+      // Process results to ensure they're in a consistent format
+      const processedResults = response.results.map(result => ({
+        title: result.title || 'Untitled',
+        url: result.url || '',
+        content: result.content || '',
+        score: result.score || 0
+      }));
+      
       return {
-        results: response.results,
+        results: processedResults,
+        query: {
+          original: query,
+          enhanced: enhancedQuery
+        },
         message: 'Search completed successfully',
       };
     } catch (error) {
       console.error('Tavily search error:', error);
       return {
         results: [],
+        query: {
+          original: query,
+          enhanced: null
+        },
         message: `Error performing web search: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
