@@ -43,6 +43,19 @@ export function DocumentPreview({
   const previewDocument = useMemo(() => documents?.[0], [documents]);
   const hitboxRef = useRef<HTMLDivElement>(null);
 
+  // Helper function to save document content to localStorage
+  const saveContentToLocalStorage = useCallback((docId: string, content: string) => {
+    if (typeof window === 'undefined' || !docId || !content) return;
+    
+    try {
+      const storageKey = `document-content-${docId}`;
+      localStorage.setItem(storageKey, content);
+      console.log(`Saved content for document ${docId} to localStorage`);
+    } catch (error) {
+      console.error('Error saving content to localStorage:', error);
+    }
+  }, []);
+
   useEffect(() => {
     const boundingBox = hitboxRef.current?.getBoundingClientRect();
 
@@ -58,6 +71,13 @@ export function DocumentPreview({
       }));
     }
   }, [artifact.documentId, setArtifact]);
+
+  // Save artifact content to localStorage whenever it changes
+  useEffect(() => {
+    if (artifact.documentId && artifact.documentId !== 'init' && artifact.content) {
+      saveContentToLocalStorage(artifact.documentId, artifact.content);
+    }
+  }, [artifact.documentId, artifact.content, saveContentToLocalStorage]);
 
   useEffect(() => {
     if (result?.id && typeof window !== 'undefined') {
@@ -107,12 +127,15 @@ export function DocumentPreview({
               return current;
             });
           }
+        } else if ((previewDocument as any).content) {
+          // Save content to localStorage if it exists in the document but hasn't been saved yet
+          saveContentToLocalStorage(previewDocument.id, (previewDocument as any).content);
         }
       } catch (error) {
         console.error('Error retrieving content from localStorage:', error);
       }
     }
-  }, [previewDocument, setArtifact]);
+  }, [previewDocument, setArtifact, saveContentToLocalStorage]);
 
   if (artifact.isVisible) {
     if (result) {
@@ -223,13 +246,30 @@ const PureHitboxLayer = ({
       console.log("Document preview clicked - activating document modal");
       const boundingBox = event.currentTarget.getBoundingClientRect();
 
+      // Get current content from localStorage if available
+      let savedContent = '';
+      const documentId = result?.id;
+      if (documentId && typeof window !== 'undefined') {
+        const storageKey = `document-content-${documentId}`;
+        try {
+          const cachedContent = localStorage.getItem(storageKey);
+          if (cachedContent) {
+            console.log(`Retrieved cached content for document ${documentId} for modal view`);
+            savedContent = cachedContent;
+          }
+        } catch (error) {
+          console.error('Error retrieving content from localStorage:', error);
+        }
+      }
+
       // Always set isVisible to true and ensure all required properties are set
       setArtifact((artifact) => ({
         ...artifact,
         title: result?.title || artifact.title || 'Untitled',
         documentId: result?.id || artifact.documentId,
         kind: result?.kind || artifact.kind || 'text',
-        isVisible: true,
+        content: savedContent || artifact.content || '',
+        isVisible: true, // Ensure visibility is always set to true on click
         boundingBox: {
           left: boundingBox.x,
           top: boundingBox.y,
@@ -304,7 +344,7 @@ const DocumentContent = ({ document }: { document: ArtifactDocument }) => {
   const containerClassName = cn(
     'h-[257px] overflow-y-scroll border rounded-b-2xl dark:bg-muted border-t-0 dark:border-zinc-700 w-full',
     {
-      'p-4': document.kind === 'text',
+      'p-6': document.kind === 'text',
       'p-0': document.kind === 'code',
     },
   );
@@ -321,12 +361,12 @@ const DocumentContent = ({ document }: { document: ArtifactDocument }) => {
   return (
     <div className={containerClassName}>
       {document.kind === 'text' ? (
-        <div className="w-full max-w-full">
+        <div className="w-full max-w-full px-2">
           <Editor {...commonProps} onSaveContent={() => {}} />
         </div>
       ) : document.kind === 'code' ? (
         <div className="flex flex-1 relative w-full">
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 p-2">
             <CodeEditor {...commonProps} onSaveContent={() => {}} />
           </div>
         </div>

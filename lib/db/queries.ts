@@ -193,6 +193,7 @@ export async function saveDocument({
   totalChunks,
   processedChunks,
   folderPath,
+  content,
 }: {
   id: string;
   userId: string;
@@ -205,6 +206,7 @@ export async function saveDocument({
   totalChunks?: number;
   processedChunks?: number;
   folderPath?: string; // New parameter for folder structure
+  content?: string; // New parameter for document content
 }) {
   try {
     console.log('saveDocument called with:', { 
@@ -213,6 +215,7 @@ export async function saveDocument({
       blobUrl: blobUrl?.substring(0, 30) + '...', // Truncate for logging
       processingStatus, statusMessage, totalChunks, processedChunks,
       folderPath, // Log folderPath
+      hasContent: !!content, // Log whether content exists without showing actual content
     });
     
     const [insertedDocument] = await db.insert(documents).values({
@@ -227,6 +230,7 @@ export async function saveDocument({
       totalChunks,
       processedChunks: processedChunks ?? 0,
       folderPath, // Include folderPath in insert
+      content, // Include content in insert
       createdAt: new Date(),     // Explicitly set createdAt
       updatedAt: new Date(),     // Explicitly set updatedAt
       // @ts-ignore - Title column exists in database but not in our schema
@@ -458,6 +462,7 @@ export async function addUploadedFileMetadata({
       processedChunks: 0,
       createdAt: new Date(),     // Explicitly set createdAt
       updatedAt: new Date(),     // Explicitly set updatedAt
+      content: null,             // Set content to null
       // @ts-ignore - Title column exists in database but not in our schema
       title: fileName,           // Set title to fileName to satisfy NOT NULL constraint
     });
@@ -578,6 +583,7 @@ export async function createDocument({
         processingStatus: 'pending',
         createdAt: new Date(),     // Explicitly set createdAt
         updatedAt: new Date(),     // Explicitly set updatedAt
+        content: null,             // Set content to null
         // @ts-ignore - Title column exists in database but not in our schema
         title: fileName,           // Set title to fileName to satisfy NOT NULL constraint
       })
@@ -742,6 +748,7 @@ export async function saveQueuedDocument({
       processedChunks: 0,
       createdAt: new Date(),     // Explicitly set createdAt
       updatedAt: new Date(),     // Explicitly set updatedAt
+      content: null,             // Set content to null
       // @ts-ignore - Title column exists in database but not in our schema
       title: fileName,           // Set title to fileName to satisfy NOT NULL constraint
     }).returning();

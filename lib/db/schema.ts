@@ -77,9 +77,7 @@ export const documents = pgTable('documents', {
   id: uuid('id').defaultRandom().primaryKey(),
   createdAt: timestamp('createdAt').defaultNow().notNull(),
   updatedAt: timestamp('updatedAt').defaultNow().notNull(),
-  userId: uuid('userId')
-    .notNull()
-    .references(() => user.id),
+  userId: uuid('userId').notNull().references(() => user.id),
   fileName: text('fileName').notNull(),
   fileType: text('fileType').notNull(),
   fileSize: integer('fileSize').notNull(),
@@ -90,6 +88,7 @@ export const documents = pgTable('documents', {
   processedChunks: integer('processedChunks').notNull().default(0),
   title: text('title'),
   folderPath: text('folderPath'),
+  content: text('content'),
 }, (table) => ({
   userIdIdx: index('documents_userId_idx').on(table.userId)
 }));
@@ -98,7 +97,6 @@ export type Document = InferSelectModel<typeof documents>;
 
 // Extended Document type for use with the artifact system
 export interface ArtifactDocument extends Document {
-  content?: string;
   kind?: string;
 }
 
