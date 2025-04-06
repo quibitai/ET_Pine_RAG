@@ -111,10 +111,16 @@ export async function getChatById({ id }: { id: string }) {
 export async function saveMessages({
   messages,
 }: {
-  messages: Array<DBMessage>;
+  messages: Array<Omit<DBMessage, 'corState'> & { corState: any }>;
 }) {
+  // Ensure every message has a corState field, even if it's null
+  const messagesWithCorState = messages.map(msg => ({
+    ...msg,
+    corState: msg.corState ?? null
+  }));
+  
   try {
-    return await db.insert(message).values(messages);
+    return await db.insert(message).values(messagesWithCorState);
   } catch (error) {
     console.error('Failed to save messages in database', error);
     throw error;

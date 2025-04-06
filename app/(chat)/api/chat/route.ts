@@ -416,6 +416,7 @@ export async function POST(request: Request) {
                     parts: userMessage.parts,
                     attachments: userMessage.experimental_attachments ?? [],
                     createdAt: new Date(),
+                    corState: null,
                   },
                 ],
               });
@@ -434,6 +435,7 @@ export async function POST(request: Request) {
                     parts: [{ type: 'text', text: responseText }],
                     attachments: [],
                     createdAt: new Date(),
+                    corState: null,
                   },
                 ],
               });
@@ -526,6 +528,7 @@ export async function POST(request: Request) {
               parts: userMessage.parts,
               attachments: userMessage.experimental_attachments ?? [],
               createdAt: new Date(),
+              corState: null,
             },
           ],
         });
@@ -600,6 +603,7 @@ export async function POST(request: Request) {
           parts: userMessage.parts,
           attachments: userMessage.experimental_attachments ?? [],
           createdAt: new Date(),
+          corState: null,
         },
       ],
     });
