@@ -21,7 +21,7 @@ import { MessageReasoning } from './message-reasoning';
 import { UseChatHelpers } from '@ai-sdk/react';
 
 // Extend UIMessage type to include metadata
-interface ExtendedUIMessage extends UIMessage {
+export interface ExtendedUIMessage extends UIMessage {
   metadata?: {
     contextSources?: Array<{
       source?: string;
