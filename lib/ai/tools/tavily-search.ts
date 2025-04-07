@@ -14,8 +14,8 @@ export const tavilySearch = tool({
   description: 'Search the web for real-time information using Tavily search engine. Use this tool to find current information, news, and data not available in the AI\'s training data. Perfect for fact-checking, finding recent events, and answering queries about current information.',
   parameters: z.object({
     query: z.string().describe('The search query to look up. Make this specific, clear, and concise (under 300 characters).'),
-    include_domains: z.array(z.string()).optional().describe('Optional list of domains to specifically include in the search'),
-    exclude_domains: z.array(z.string()).optional().describe('Optional list of domains to exclude from the search'),
+    include_domains: z.array(z.string()).describe('Required: List of domains to specifically include in the search. Pass an empty array [] if no domains to include.'),
+    exclude_domains: z.array(z.string()).describe('Required: List of domains to exclude from the search. Pass an empty array [] if no domains to exclude.'),
     search_depth: z.enum(['basic', 'advanced']).optional().describe('The depth of search to perform. Default is "advanced".'),
     max_results: z.number().optional().describe('Maximum number of results to return (1-10). Default is 5.'),
     include_answer: z.boolean().optional().describe('Whether to include an AI-generated answer summary. Default is false.'),
@@ -35,9 +35,7 @@ export const tavilySearch = tool({
     topic
   }) => {
     try {
-      // Define final parameters with defaults
-      const final_include_domains = include_domains ?? [];
-      const final_exclude_domains = exclude_domains ?? [];
+      // Define final parameters with defaults for optional parameters
       const final_search_depth = search_depth ?? 'advanced';
       const final_max_results = max_results ?? 5;
       const final_include_answer = include_answer ?? false;
@@ -47,6 +45,7 @@ export const tavilySearch = tool({
 
       console.log(`[Tavily Tool] Executing search with query: "${query}"`);
       console.log(`[Tavily Tool] Search parameters: depth=${final_search_depth}, max_results=${final_max_results}, time_range=${time_range || 'default'}, topic=${final_topic || 'none'}`);
+      console.log(`[Tavily Tool] Domain filters: include=${include_domains.length > 0 ? include_domains.join(',') : 'none'}, exclude=${exclude_domains.length > 0 ? exclude_domains.join(',') : 'none'}`);
       
       // Ensure max_results is within valid range (1-10) even without schema validation
       const validatedMaxResults = Math.max(1, Math.min(10, final_max_results));
@@ -54,17 +53,27 @@ export const tavilySearch = tool({
         console.log(`[Tavily Tool] Adjusted max_results from ${final_max_results} to ${validatedMaxResults}`);
       }
       
-      // Perform a search with the Tavily API using provided parameters
-      const response = await tvly.search(query, {
+      // Prepare options for Tavily API call
+      const tavilyOptions: any = {
         search_depth: final_search_depth,
-        include_domains: final_include_domains,
-        exclude_domains: final_exclude_domains,
         max_results: validatedMaxResults, // Use validated value
         include_answer: final_include_answer,
         include_raw_content: final_include_raw_content,
         ...(time_range && { time_range }),
         ...(final_topic && { topic: final_topic })
-      });
+      };
+
+      // Only include domain filters if they have values
+      if (include_domains.length > 0) {
+        tavilyOptions.include_domains = include_domains;
+      }
+      
+      if (exclude_domains.length > 0) {
+        tavilyOptions.exclude_domains = exclude_domains;
+      }
+      
+      // Perform a search with the Tavily API using provided parameters
+      const response = await tvly.search(query, tavilyOptions);
 
       // Log the raw results immediately after receiving them
       console.log(`[Tavily Tool] Raw results received from Tavily: ${response.results.length} results`);
@@ -91,8 +100,8 @@ export const tavilySearch = tool({
         parameters: {
           search_depth: final_search_depth,
           max_results: validatedMaxResults,
-          include_domains: final_include_domains.length > 0 ? final_include_domains : undefined,
-          exclude_domains: final_exclude_domains.length > 0 ? final_exclude_domains : undefined,
+          include_domains: include_domains.length > 0 ? include_domains : undefined,
+          exclude_domains: exclude_domains.length > 0 ? exclude_domains : undefined,
           time_range: time_range || undefined,
           topic: final_topic || undefined
         },

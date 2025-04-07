@@ -25,7 +25,7 @@ interface TavilyExtractResponse {
 export const tavilyExtract = tool({
   description: 'Extracts detailed content from a list of specified URLs using the Tavily Extract API. Use this after using tavilySearch to get promising URLs.',
   parameters: z.object({
-    urls: z.array(z.string()).describe('A list of URLs to extract content from. Should be URLs retrieved from a previous tavilySearch call.'),
+    urls: z.array(z.string()).describe('Required: List of URLs to extract content from. Should be URLs retrieved from a previous tavilySearch call.'),
     extract_depth: z.enum(['basic', 'advanced']).optional().describe('Depth of extraction. "basic" is faster, "advanced" gets more content but costs more. Default is basic.'),
     include_images: z.boolean().optional().describe('Whether to include images in the extraction. Default is false.'),
     max_tokens_per_url: z.number().optional().describe('Maximum number of tokens to extract per URL. Default is 8000.'),
@@ -42,7 +42,7 @@ export const tavilyExtract = tool({
       const final_include_images = include_images ?? false;
       const final_max_tokens_per_url = max_tokens_per_url ?? 8000;
 
-      if (!urls || urls.length === 0) {
+      if (urls.length === 0) {
         return {
           message: "No URLs provided for extraction.",
           results: []
@@ -57,12 +57,15 @@ export const tavilyExtract = tool({
         try {
           console.log(`[Tavily Extract Tool] Processing URL: ${url}`);
           
-          // Call Tavily's extract method with URL as array
-          const extractResult = await tvly.extract([url], {
+          // Prepare extract options
+          const extractOptions = {
             extract_depth: final_extract_depth,
             include_images: final_include_images,
-            max_tokens: final_max_tokens_per_url,
-          }) as TavilyExtractResponse;
+            max_tokens: final_max_tokens_per_url
+          };
+          
+          // Call Tavily's extract method with URL as array
+          const extractResult = await tvly.extract([url], extractOptions) as TavilyExtractResponse;
           
           // Create a structured result
           return {

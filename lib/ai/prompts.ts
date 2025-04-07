@@ -44,6 +44,34 @@ export const webSearchPrompt = `
   * max_results: Adjust based on complexity (5-10)
   * topic: Specify 'news', 'finance', or 'general' when appropriate
 
+**IMPORTANT: REQUIRED PARAMETERS FOR TAVILY TOOLS**
+When using the tavilySearch tool:
+- 'query' (string, required): Your search query
+- 'include_domains' (array of strings, required): **You MUST ALWAYS provide this parameter**
+  * If no specific domains to include, pass an empty array: include_domains: []
+  * If filtering for specific domains, pass an array of domains: include_domains: ["example.com", "site.org"]
+- 'exclude_domains' (array of strings, required): **You MUST ALWAYS provide this parameter**
+  * If no domains to exclude, pass an empty array: exclude_domains: []
+  * If excluding specific domains, pass an array of domains: exclude_domains: ["pinterest.com", "reddit.com"]
+
+Example call when no domain filtering is needed:
+\`\`\`
+tavilySearch({
+  query: "latest news on AI regulation",
+  include_domains: [], // Empty array is REQUIRED
+  exclude_domains: []  // Empty array is REQUIRED
+})
+\`\`\`
+
+Example call with domain filtering:
+\`\`\`
+tavilySearch({
+  query: "vercel AI SDK documentation",
+  include_domains: ["vercel.com", "sdk.vercel.ai"], 
+  exclude_domains: [] 
+})
+\`\`\`
+
 **TWO-STEP SEARCH & EXTRACT PROCESS:**
 1. **SEARCH (tavilySearch)**: First, use the tavilySearch tool to identify relevant web pages and get initial content snippets. The search results provide URLs, titles, and short excerpts.
 
