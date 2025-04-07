@@ -1048,36 +1048,36 @@ ${contextInstructions}`;
                 // Apply filtering before adding to webSearchResults
                 const rawResults = content.result?.results;
                 if (Array.isArray(rawResults)) {
+                  // Define minimum relevance score for filtering low-quality results
+                  const MIN_RELEVANCE_SCORE = 0.5;
+                  
                   const filteredResults = rawResults.filter(result => {
                     const title = (result.title || '').toLowerCase();
                     const snippet = (result.content || '').toLowerCase();
+                    const score = result.score || 0;
                     
-                    // Basic filtering criteria
-                    const hasNewsKeyword = 
-                      title.includes('news') || 
-                      snippet.includes('news') || 
-                      title.includes('press') || 
-                      snippet.includes('press') ||
-                      title.includes('announces') || 
-                      snippet.includes('announces') ||
-                      title.includes('releases') || 
-                      snippet.includes('releases') ||
-                      title.includes('hosts') || 
-                      snippet.includes('hosts') ||
-                      title.includes('opens') || 
-                      snippet.includes('opens') ||
-                      title.includes('event') || 
-                      snippet.includes('event');
-                      
-                    // Filter out obviously irrelevant results
-                    const isRelevant = 
-                      result.score === undefined || 
-                      result.score > 0.2; // Minimal score threshold if available
-                      
-                    return isRelevant && (hasNewsKeyword || true); // For now, keep all relevant results
+                    // Primary filter: relevance score - if available, use as primary criteria
+                    if (score < MIN_RELEVANCE_SCORE) {
+                      return false; // Filter out low-scoring results
+                    }
+                    
+                    // Enhanced content relevance check
+                    const urlLower = (result.url || '').toLowerCase();
+                    
+                    // Filter out irrelevant domains
+                    const BLOCKED_DOMAINS = ['pinterest', 'quora', 'reddit.com/r/ChatGPT'];
+                    if (BLOCKED_DOMAINS.some(domain => urlLower.includes(domain))) {
+                      return false;
+                    }
+                    
+                    // Additional criteria for quality content
+                    const hasSubstantialContent = (snippet.length > 100); // Ensure there's enough content
+                    const hasTitle = title.length > 5; // Ensure there's a meaningful title
+                    
+                    return hasSubstantialContent && hasTitle;
                   });
                   
-                  console.log(`[API Chat] Filtered Tavily results: ${filteredResults.length} out of ${rawResults.length}`);
+                  console.log(`[API Chat] Filtered Tavily results: ${filteredResults.length} out of ${rawResults.length} (min score: ${MIN_RELEVANCE_SCORE})`);
                   
                   // Store the filtered results
                   if (filteredResults.length > 0) {

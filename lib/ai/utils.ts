@@ -34,34 +34,36 @@ export async function enhanceSearchQuery(
     console.log(`Using system prompt context: ${systemPrompt ? 'Yes' : 'No'}`);
     console.log(`Using RAG context: ${ragContext ? 'Yes (' + ragContext.length + ' chars)' : 'No'}`);
     
+    // Early return for very short queries that don't need enhancement
+    if (originalQuery.trim().length < 5) {
+      console.log('Query too short for enhancement, using as-is');
+      console.timeEnd(timeLabel);
+      return originalQuery;
+    }
+    
+    // Maximum length for enhanced queries
+    const MAX_QUERY_LENGTH = 300;
+    
     // Construct the prompt for the LLM
-    const prompt = `You are an expert research query formulation specialist with deep expertise in information retrieval, search algorithms, and knowledge discovery.
+    const prompt = `You are an expert search query optimizer skilled at creating concise, high-precision search queries.
 
-Your task is to transform the user's original query into an optimized search query that will yield the most relevant, authoritative, and comprehensive results.
+YOUR TASK:
+Transform the user's query into a concise, optimized search query that will yield relevant results from search engines.
 
-GOALS:
-1. Create a search query that captures the core information need
-2. Add precision through specific terminology relevant to the domain
-3. Include alternative phrasings for key concepts to expand coverage
-4. Incorporate relevant contextual information from provided RAG context
-5. Prioritize recency for time-sensitive topics
-6. Structure the query for maximum relevance in web search engines
+REQUIREMENTS:
+1. Output ONLY the enhanced query text - no other text, explanations, or formatting
+2. Create a query under ${MAX_QUERY_LENGTH} characters
+3. Focus on precision and relevance over verbosity
+4. Include key domain-specific terminology
+5. Use quotation marks for exact phrases when appropriate
+6. Maintain the original intent of the query
+7. For time-sensitive information, include "2025" or other relevant time indicators
 
-${systemPrompt ? `DOMAIN CONTEXT:\n${systemPrompt.substring(0, 1000)}\n\nThe above context describes the AI assistant's purpose and domain expertise. Use this to inform your query formulation.` : ''}
+${systemPrompt ? `DOMAIN CONTEXT (use relevant terms from this):\n${systemPrompt.substring(0, 500)}\n` : ''}
 
-${ragContext ? `KNOWLEDGE BASE CONTEXT:\n${ragContext.substring(0, 1500)}\n\nThe above contains relevant information from the user's document repository. Incorporate key terms, entities, and concepts from this context into your query if they're relevant to the user's information need.` : ''}
+${ragContext ? `KNOWLEDGE BASE CONTEXT (extract key terms if relevant):\n${ragContext.substring(0, 500)}\n` : ''}
 
-${chatHistory ? `\nCONVERSATION HISTORY:\n${chatHistory}\n\nThe above shows previous exchanges. Use this to maintain continuity and build upon established context.` : ''}
-
-INSTRUCTIONS:
-- Analyze the user's query to identify the core information need and subject domain
-- Extract key entities, concepts, and relationships
-- Add domain-specific terminology that search engines would recognize
-- Include synonyms or alternative phrasings for key terms
-- Specify recency requirements for time-sensitive topics (e.g., "recent", "2025", "latest")
-- Remove unnecessary conversational elements or filler words
-- Structure the query to work optimally with search engines
-- Output ONLY the enhanced search query, nothing else
+${chatHistory ? `CONVERSATION HISTORY (for context):\n${chatHistory.substring(0, 300)}\n` : ''}
 
 Original Query: "${originalQuery}"
 
@@ -70,20 +72,37 @@ Enhanced Query:`;
     // Use a fast model for quick response
     const { text: enhancedQuery } = await generateText({
       model: myProvider.languageModel('openai-chat-model'),
-      system: 'You are an expert search query optimizer that transforms user queries for optimal web search results. Return ONLY the enhanced query text with no explanations or additional text.',
+      system: 'You are an expert search query optimizer. Return ONLY the enhanced query text with no explanations or additional content.',
       prompt: prompt,
+      temperature: 0.3, // Lower temperature for more focused outputs
+      maxTokens: 100,   // Limit token generation to ensure concise results
     });
 
-    const cleanedQuery = enhancedQuery.trim().replace(/^["']|["']$/g, ''); // Remove quotes if the model added them
+    // Clean and validate the enhanced query
+    let cleanedQuery = enhancedQuery.trim().replace(/^["']|["']$/g, ''); // Remove quotes if the model added them
     
-    console.log(`Enhanced query: "${cleanedQuery}"`);
+    // Ensure query doesn't exceed max length
+    if (cleanedQuery.length > MAX_QUERY_LENGTH) {
+      cleanedQuery = cleanedQuery.substring(0, MAX_QUERY_LENGTH);
+      console.log(`Enhanced query exceeded max length, truncated to ${MAX_QUERY_LENGTH} chars`);
+    }
+    
+    // If enhancement failed or returned nothing useful, use original
+    if (!cleanedQuery || cleanedQuery.length < 3) {
+      console.log('Enhancement failed to produce valid result, using original query');
+      console.timeEnd(timeLabel);
+      return originalQuery;
+    }
+    
+    console.log(`Original query (${originalQuery.length} chars): "${originalQuery}"`);
+    console.log(`Enhanced query (${cleanedQuery.length} chars): "${cleanedQuery}"`);
     console.timeEnd(timeLabel);
     
     return cleanedQuery;
   } catch (error) {
     // Log error but don't fail - fall back to original query
     console.error('Error enhancing search query:', error);
-    console.log('Falling back to original query');
+    console.log('Falling back to original query due to error');
     return originalQuery;
   }
 }

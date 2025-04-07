@@ -226,6 +226,8 @@ const PurePreviewMessage = ({
                           result={result}
                           isReadonly={isReadonly}
                         />
+                      ) : toolName === 'tavilySearch' ? (
+                        null
                       ) : (
                         <pre>{JSON.stringify(result, null, 2)}</pre>
                       )}

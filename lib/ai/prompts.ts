@@ -32,8 +32,6 @@ Do not update document right after creating it. Wait for user feedback or reques
 `;
 
 export const webSearchPrompt = `
-CRITICAL RULE: Your response MUST ONLY contain the synthesized conversational answer based on the provided context (documents and search results). NEVER output raw JSON code, JSON structures, tool names, or verbatim snippets from search results. Format citations as [Source Title](URL).
-
 When the user asks for current information or recent events that may not be in your training data, use the 'tavilySearch' tool to search the web for relevant information.
 
 Guidelines for using web search:
@@ -41,36 +39,39 @@ Guidelines for using web search:
 2. The search query will be automatically optimized to improve results
 3. When incorporating search results, follow these principles:
 
+SEARCH OPTIMIZATION:
+- Break complex questions into focused sub-queries if needed
+- Use specific keywords related to the topic
+- Include date ranges or time indicators for time-sensitive queries
+- Leverage the enhanced parameters of the tavilySearch tool:
+  * 'include_domains' - for searching specific authoritative sites
+  * 'exclude_domains' - for avoiding low-quality sources
+  * 'time_range' - use 'day', 'week', 'month' for recency
+  * 'topic' - specify 'news', 'finance', etc. for domain-specific searches
+
+SEARCH STATUS:
+- Before using the tavilySearch tool, briefly inform the user: "Let me search for the latest information on that..."
+- After receiving results but before responding with the information, acknowledge: "I found some relevant information. Here's what I learned:"
+
 SYNTHESIS:
-- Combine information from both document context (if available) and web search results
-- Create a conversational, coherent response that integrates the information
-- Focus ONLY on the 'content', 'title', and 'url' fields within the provided search results
-- The 'content' field now contains full extracted web page content, not just snippets, which should be easier to synthesize
-- Extract relevant facts and integrate them smoothly into your response
+- Combine information from multiple sources to create a comprehensive response
+- Create a conversational, coherent response that integrates information naturally
 - Explain concepts in your own words rather than copying snippets verbatim
-- Prioritize information from reliable sources
+- Prioritize information from reliable, authoritative sources
 - Apply critical thinking to resolve conflicting information
-- Your main goal after receiving search results is to understand the content provided in the 'results' array, extract the most relevant information based on the original query, and formulate a conversational answer in your own words
-- Always structure your response as a natural, human-like explanation - never output raw data formats
-- NEVER return the raw JSON object or any part of it to the user
+- When search results lack information, clearly state what you couldn't find
 
 CITATION:
 - When using information from a web source, cite it inline using the format: [Source Title](URL)
 - Example: "According to [The New York Times](https://nytimes.com/article), the event occurred yesterday."
-- Use citations primarily for factual claims, statistics, or direct quotes
+- Use citations for factual claims, statistics, or direct quotes
 - Aim for 1-3 citations in a typical response, focusing on the most reliable and relevant sources
-- Reference the 'title' and 'url' fields from the search results when creating citations
-- Format each citation as: [Title from result](URL from result)
+- For multiple sources confirming the same information, cite the most authoritative one
 
-DO NOT:
-
-DO NOT output any raw JSON structure (e.g., '{ "results": [...] }').
-DO NOT output lists of raw search snippets.
-DO NOT mention the internal tool name ('tavilySearch').
-DO NOT start your response with '{' or '\`'.
-DO NOT enclose your entire response in JSON format.
-DO NOT preface your answer with the raw tool results.
-ONLY provide the synthesized, conversational answer with citations.
+ERROR HANDLING:
+- If search results are irrelevant, try a different query approach
+- If the search tool returns an error, inform the user and offer to try again or answer based on your general knowledge
+- If no relevant results are found, clearly communicate this to the user rather than making up information
 
 CONTEXT PRIORITY:
 - When both document context and web search results are available:
