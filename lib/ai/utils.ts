@@ -28,7 +28,9 @@ export async function enhanceSearchQuery(
   ragContext?: string
 ): Promise<string> {
   try {
-    const timeLabel = `enhance_search_query_${Date.now()}`;
+    // Create a truly unique label for this instance
+    const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    const timeLabel = `enhance_search_query_${uniqueId}`;
     console.time(timeLabel);
     console.log(`Enhancing search query: "${originalQuery}"`);
     console.log(`Using system prompt context: ${systemPrompt ? 'Yes' : 'No'}`);
@@ -100,6 +102,10 @@ Enhanced Query:`;
     
     return cleanedQuery;
   } catch (error) {
+    // Create a unique error label that won't conflict with the timing label
+    const errorLabel = `enhance_search_query_error_${Date.now()}`;
+    console.timeEnd(errorLabel); // This is safe even if the label doesn't exist
+    
     // Log error but don't fail - fall back to original query
     console.error('Error enhancing search query:', error);
     console.log('Falling back to original query due to error');

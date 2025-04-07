@@ -1127,7 +1127,9 @@ ${contextInstructions}`;
           : systemPrompt;
         
         // --- Enhance User Query for Search ---
-        const searchTimeLabel = `enhance_search_query_${Date.now()}`;
+        // Create a truly unique label for this instance to avoid console.time warnings
+        const uniqueSearchId = `${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+        const searchTimeLabel = `enhance_search_query_${uniqueSearchId}`;
         console.time(searchTimeLabel);
         let enhancedUserQuery = '';
         const userQuery = userMessage.parts[0] && 'text' in userMessage.parts[0] ? userMessage.parts[0].text : '';
