@@ -73,6 +73,8 @@ function formatResponse(text: string): string {
   }
   
   // Format JSON responses correctly - detect direct JSON output that should be formatted
+  // Removing this block to ensure we see exactly what the LLM outputs
+  /* 
   if (cleanedText.trim().startsWith('{') && cleanedText.includes('"results":')) {
     try {
       // This looks like raw Tavily results being output directly
@@ -109,6 +111,7 @@ function formatResponse(text: string): string {
       console.log("Attempted to parse JSON in response but failed:", e);
     }
   }
+  */
   
   return cleanedText.trim();
 }
@@ -1262,6 +1265,8 @@ ${contextInstructions}`;
                 }
 
                 // Save the message to the database with metadata
+                console.log('[VERCEL DEBUG] Metadata to be saved:', JSON.stringify(responseMetadata, null, 2));
+                
                 await saveMessages({
                   messages: [
                     {

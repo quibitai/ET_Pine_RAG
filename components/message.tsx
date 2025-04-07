@@ -45,6 +45,10 @@ export interface ExtendedUIMessage extends UIMessage {
 const DebuggingInfo = ({ message }: { message: ExtendedUIMessage }) => {
   const [isOpen, setIsOpen] = useState(false);
 
+  // Add console log to check if metadata is present
+  console.log(`[VERCEL DEBUG] Rendering message ${message.id}. Metadata found:`, 
+    message.metadata ? JSON.stringify(message.metadata) : 'null or undefined');
+
   // Extract debugging information from message
   let hasDebuggingInfo = false;
   let documentContext = null;

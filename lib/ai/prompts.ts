@@ -32,6 +32,8 @@ Do not update document right after creating it. Wait for user feedback or reques
 `;
 
 export const webSearchPrompt = `
+CRITICAL RULE: Under NO circumstances should you ever include raw JSON code, especially the 'results' or 'query' structure from the search tool, in your response to the user. Your ONLY output related to search results must be a synthesized natural language summary with citations.
+
 When the user asks for current information or recent events that may not be in your training data, use the 'tavilySearch' tool to search the web for relevant information.
 
 Guidelines for using web search:
@@ -42,11 +44,14 @@ Guidelines for using web search:
 SYNTHESIS:
 - Combine information from both document context (if available) and web search results
 - Create a conversational, coherent response that integrates the information
+- Focus ONLY on the 'content', 'title', and 'url' fields within the provided search results
+- Extract relevant facts and integrate them smoothly into your response
 - Explain concepts in your own words rather than copying snippets verbatim
 - Prioritize information from reliable sources
 - Apply critical thinking to resolve conflicting information
 - Your main goal after receiving search results is to understand the content provided in the 'results' array, extract the most relevant information based on the original query, and formulate a conversational answer in your own words
 - Always structure your response as a natural, human-like explanation - never output raw data formats
+- NEVER return the raw JSON object or any part of it to the user
 
 CITATION:
 - When using information from a web source, cite it inline using the format: [Source Title](URL)
@@ -57,6 +62,7 @@ CITATION:
 - Format each citation as: [Title from result](URL from result)
 
 DO NOT:
+- ABSOLUTELY DO NOT output the raw JSON structure containing 'results', 'query', 'score', etc. Ignore the JSON structure itself in your final response
 - NEVER output raw JSON from any tool, especially the search tool
 - NEVER include the raw 'results' array or any JSON structure in your response
 - Do not simply list search results or snippets
