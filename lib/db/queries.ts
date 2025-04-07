@@ -111,18 +111,25 @@ export async function getChatById({ id }: { id: string }) {
 export async function saveMessages({
   messages,
 }: {
-  messages: Array<Omit<DBMessage, 'corState'> & { corState: any }>;
+  messages: Array<Omit<DBMessage, 'corState' | 'metadata'> & { corState: any, metadata: any }>;
 }) {
-  // Ensure every message has a corState field, even if it's null
-  const messagesWithCorState = messages.map(msg => ({
+  // Ensure every message has a corState and metadata field, even if it's null
+  const messagesWithRequiredFields = messages.map(msg => ({
     ...msg,
-    corState: msg.corState ?? null
+    corState: msg.corState ?? null,
+    metadata: msg.metadata ?? null
   }));
   
   try {
-    return await db.insert(message).values(messagesWithCorState);
+    return await db.insert(message).values(messagesWithRequiredFields);
   } catch (error) {
     console.error('Failed to save messages in database', error);
+    console.error('Message data that failed:', JSON.stringify(messages.map(m => ({
+      id: m.id,
+      role: m.role,
+      hasCorState: !!m.corState,
+      hasMetadata: !!m.metadata
+    }))));
     throw error;
   }
 }
