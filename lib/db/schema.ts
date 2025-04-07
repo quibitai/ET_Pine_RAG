@@ -11,6 +11,7 @@ import {
   boolean,
   integer,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 export const user = pgTable('User', {
@@ -75,10 +76,10 @@ export const vote = pgTable(
 export type Vote = InferSelectModel<typeof vote>;
 
 export const documents = pgTable('documents', {
-  id: uuid('id').defaultRandom().primaryKey(),
+  id: text('id').notNull(),
   createdAt: timestamp('createdAt').defaultNow().notNull(),
   updatedAt: timestamp('updatedAt').defaultNow().notNull(),
-  userId: uuid('userId').notNull().references(() => user.id),
+  userId: text('userId').notNull(),
   fileName: text('fileName').notNull(),
   fileType: text('fileType').notNull(),
   fileSize: integer('fileSize').notNull(),
@@ -91,7 +92,8 @@ export const documents = pgTable('documents', {
   folderPath: text('folderPath'),
   content: text('content'),
 }, (table) => ({
-  userIdIdx: index('documents_userId_idx').on(table.userId)
+  pk: primaryKey({ columns: [table.id, table.createdAt] }),
+  userIdIdx: uniqueIndex('documents_userId_idx').on(table.userId),
 }));
 
 export type Document = InferSelectModel<typeof documents>;
@@ -101,28 +103,21 @@ export interface ArtifactDocument extends Document {
   kind?: string;
 }
 
-export const suggestion = pgTable(
-  'Suggestion',
-  {
-    id: uuid('id').notNull().defaultRandom(),
-    documentId: uuid('documentId').notNull(),
-    documentCreatedAt: timestamp('documentCreatedAt').notNull(),
-    originalText: text('originalText').notNull(),
-    suggestedText: text('suggestedText').notNull(),
-    description: text('description'),
-    isResolved: boolean('isResolved').notNull().default(false),
-    userId: uuid('userId')
-      .notNull()
-      .references(() => user.id),
-    createdAt: timestamp('createdAt').notNull(),
-  },
-  (table) => ({
-    pk: primaryKey({ columns: [table.id] }),
-    documentRef: foreignKey({
-      columns: [table.documentId, table.documentCreatedAt],
-      foreignColumns: [documents.id, documents.createdAt],
-    }),
-  }),
-);
+export const suggestion = pgTable('Suggestion', {
+  id: text('id').primaryKey(),
+  documentId: text('documentId').notNull(),
+  documentCreatedAt: timestamp('documentCreatedAt').notNull(),
+  originalText: text('originalText').notNull(),
+  suggestedText: text('suggestedText').notNull(),
+  description: text('description'),
+  isResolved: boolean('isResolved').notNull().default(false),
+  userId: text('userId').notNull(),
+  createdAt: timestamp('createdAt').notNull(),
+}, (table) => ({
+  documentFk: foreignKey({
+    columns: [table.documentId, table.documentCreatedAt],
+    foreignColumns: [documents.id, documents.createdAt]
+  })
+}));
 
 export type Suggestion = InferSelectModel<typeof suggestion>;
