@@ -93,7 +93,7 @@ export const documents = pgTable('documents', {
   content: text('content'),
 }, (table) => ({
   pk: primaryKey({ columns: [table.id, table.createdAt] }),
-  userIdIdx: uniqueIndex('documents_userId_idx').on(table.userId),
+  userIdIdx: index('documents_userId_idx').on(table.userId),
 }));
 
 export type Document = InferSelectModel<typeof documents>;
