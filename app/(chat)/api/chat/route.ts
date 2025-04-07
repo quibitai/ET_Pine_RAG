@@ -1140,7 +1140,6 @@ ${contextInstructions}`;
           : systemPrompt;
         
         // --- Enhance User Query for Search ---
-        console.time('enhance_search_query');
         let enhancedUserQuery = '';
         const userQuery = userMessage.parts[0] && 'text' in userMessage.parts[0] ? userMessage.parts[0].text : '';
         
@@ -1168,7 +1167,6 @@ ${contextInstructions}`;
         
         // Since we're already in an async function (POST), we can await directly
         enhancedUserQuery = await enhanceQuery();
-        console.timeEnd('enhance_search_query');
         // --- End Enhance User Query ---
         
         // Add context to system prompt if available
@@ -1199,6 +1197,7 @@ ${contextInstructions}`;
                 ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
+          experimental_streamData: true,
           tools: {
             getWeather,
             createDocument: createDocument({ session, dataStream }),
@@ -1252,7 +1251,7 @@ ${contextInstructions}`;
                   }
                 }
 
-                // Save the message to the database with corState always set to null
+                // Save the message to the database with metadata
                 await saveMessages({
                   messages: [
                     {
@@ -1290,6 +1289,7 @@ ${contextInstructions}`;
 
         result.mergeIntoDataStream(dataStream, {
           sendReasoning: true,
+          metadata: responseMetadata
         });
       },
       onError: (error) => {

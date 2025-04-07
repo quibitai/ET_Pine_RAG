@@ -46,30 +46,29 @@ export function Chat({
     initialMessages,
     experimental_throttle: 100,
     sendExtraMessageFields: true,
-    onResponse: (response) => {
-      // Extract metadata from response headers if present
-      const metadata = response.headers.get('x-message-metadata');
-      if (metadata) {
-        try {
-          const parsedMetadata = JSON.parse(metadata);
-          // Update the last message with metadata
-          setMessages((messages) => {
-            const lastMessage = messages[messages.length - 1];
-            if (lastMessage && lastMessage.role === 'assistant') {
-              return [
-                ...messages.slice(0, -1),
-                { ...lastMessage, metadata: parsedMetadata }
-              ];
-            }
-            return messages;
-          });
-        } catch (error) {
-          console.error('Failed to parse message metadata:', error);
-        }
-      }
+    onResponse: async (response) => {
+      // No need to handle metadata here, it will be fetched after the message is saved
     },
     generateId: generateUUID,
-    onFinish: () => {
+    onFinish: async () => {
+      // After the message is finished, fetch the latest message with metadata
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && lastMessage.role === 'assistant') {
+        try {
+          const response = await fetch(`/api/messages/${lastMessage.id}`);
+          const data = await response.json();
+          if (data && data.metadata) {
+            // Update the message with metadata from the database
+            setMessages((messages) => {
+              return messages.map(msg => 
+                msg.id === lastMessage.id ? { ...msg, metadata: data.metadata } : msg
+              );
+            });
+          }
+        } catch (error) {
+          console.error('Failed to fetch message metadata:', error);
+        }
+      }
       mutate('/api/history');
     },
     onError: () => {
