@@ -17,7 +17,7 @@ export const tavilySearch = tool({
     include_domains: z.array(z.string()).optional().describe('Optional list of domains to specifically include in the search'),
     exclude_domains: z.array(z.string()).optional().describe('Optional list of domains to exclude from the search'),
     search_depth: z.enum(['basic', 'advanced']).optional().describe('The depth of search to perform. Default is "advanced".'),
-    max_results: z.number().min(1).max(10).optional().describe('Maximum number of results to return. Default is 5.'),
+    max_results: z.number().max(10).optional().describe('Maximum number of results to return (1-10). Default is 5.'),
     include_answer: z.boolean().optional().describe('Whether to include an AI-generated answer summary. Default is false.'),
     include_raw_content: z.boolean().optional().describe('Whether to include the raw HTML content. Default is false.'),
     time_range: z.enum(['day', 'week', 'month', 'year']).optional().describe('Time range for search results.'),
@@ -38,12 +38,18 @@ export const tavilySearch = tool({
       console.log(`[Tavily Tool] Executing search with query: "${query}"`);
       console.log(`[Tavily Tool] Search parameters: depth=${search_depth}, max_results=${max_results}, time_range=${time_range || 'default'}, topic=${topic || 'none'}`);
       
+      // Ensure max_results is within valid range (1-10) even without schema validation
+      const validatedMaxResults = Math.max(1, Math.min(10, max_results));
+      if (validatedMaxResults !== max_results) {
+        console.log(`[Tavily Tool] Adjusted max_results from ${max_results} to ${validatedMaxResults}`);
+      }
+      
       // Perform a search with the Tavily API using provided parameters
       const response = await tvly.search(query, {
         search_depth,
         include_domains,
         exclude_domains,
-        max_results,
+        max_results: validatedMaxResults, // Use validated value
         include_answer,
         include_raw_content,
         ...(time_range && { time_range }),
@@ -74,7 +80,7 @@ export const tavilySearch = tool({
         },
         parameters: {
           search_depth,
-          max_results,
+          max_results: validatedMaxResults,
           include_domains: include_domains.length > 0 ? include_domains : undefined,
           exclude_domains: exclude_domains.length > 0 ? exclude_domains : undefined,
           time_range: time_range || undefined,
