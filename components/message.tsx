@@ -45,30 +45,32 @@ export interface ExtendedUIMessage extends UIMessage {
 const DebuggingInfo = ({ message }: { message: ExtendedUIMessage }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Add console log to check if metadata is present
-  console.log(`[VERCEL DEBUG] Rendering message ${message.id}. Metadata found:`, 
+  // Enhanced debugging - log all relevant conditions
+  const hasContextSources = !!message.metadata?.contextSources && message.metadata.contextSources.length > 0;
+  const hasSearchInfo = !!message.metadata?.searchInfo;
+  
+  // Extract debugging information from message
+  let hasDebuggingInfo = hasContextSources || hasSearchInfo;
+  let documentContext = hasContextSources ? message.metadata?.contextSources : null;
+  let vectorIds: string[] = (hasContextSources && message.metadata?.vectorIds) ? message.metadata.vectorIds : [];
+  let searchInfo = hasSearchInfo ? message.metadata?.searchInfo : null;
+
+  // More detailed console log
+  console.log(`[VERCEL DEBUG] Rendering message ${message.id}: hasContextSources=${hasContextSources}, hasSearchInfo=${hasSearchInfo}, hasDebuggingInfo=${hasDebuggingInfo}, metadata:`, 
     message.metadata ? JSON.stringify(message.metadata) : 'null or undefined');
 
-  // Extract debugging information from message
-  let hasDebuggingInfo = false;
-  let documentContext = null;
-  let vectorIds: string[] = [];
-  let searchInfo = null;
-
-  // Check for RAG information in metadata
-  if (message.metadata?.contextSources && message.metadata.contextSources.length > 0) {
-    hasDebuggingInfo = true;
-    documentContext = message.metadata.contextSources;
-    vectorIds = message.metadata.vectorIds || [];
+  // Debugging for metadata structure if it exists
+  if (message.metadata) {
+    console.log(`[VERCEL DEBUG] Metadata keys:`, Object.keys(message.metadata));
+    if (message.metadata.contextSources) {
+      console.log(`[VERCEL DEBUG] contextSources length:`, message.metadata.contextSources.length);
+    }
   }
 
-  // Check for search information
-  if (message.metadata?.searchInfo) {
-    hasDebuggingInfo = true;
-    searchInfo = message.metadata.searchInfo;
+  if (!hasDebuggingInfo) {
+    console.log(`[VERCEL DEBUG] No debugging info available for message ${message.id} - returning null`);
+    return null;
   }
-
-  if (!hasDebuggingInfo) return null;
 
   return (
     <div className="mt-2 border border-gray-200 dark:border-gray-800 rounded-md overflow-hidden">

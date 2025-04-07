@@ -44,6 +44,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
       createdAt: message.createdAt,
       experimental_attachments:
         (message.attachments as Array<Attachment>) ?? [],
+      metadata: message.metadata
     }));
   }
 
