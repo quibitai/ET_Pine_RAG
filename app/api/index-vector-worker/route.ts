@@ -61,9 +61,7 @@ export async function POST(request: Request) {
         userId: userId.substring(0, 8) // Only log part of the userId for privacy
       });
       
-      await index.upsert({
-        vectors: [payload]
-      });
+      await index.upsert([payload]);
       
       // Update the document status
       await incrementProcessedChunks({ id: documentId });
