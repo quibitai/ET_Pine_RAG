@@ -1,5 +1,4 @@
 import { tool } from 'ai';
-import { z } from 'zod';
 import { tavily } from '@tavily/core';
 
 // Initialize Tavily client with API key from environment variables
@@ -10,23 +9,60 @@ const tvly = tavily({
 // Minimum relevance score threshold for filtering out low-quality results
 const MIN_RELEVANCE_SCORE = 0.5;
 
-// Define Zod schema for Tavily search parameters
-// Only 'query' is required, all other parameters are optional
-const tavilySearchParams = z.object({
-  query: z.string().describe('The search query to look up. Make this specific, clear, and concise (under 300 characters).'),
-  include_domains: z.array(z.string()).optional().describe('Optional: List of domains to specifically include in the search (e.g., ["example.com"]).'),
-  exclude_domains: z.array(z.string()).optional().describe('Optional: List of domains to exclude from the search.'),
-  search_depth: z.enum(['basic', 'advanced']).optional().describe('Optional: Search depth ("basic" or "advanced"). Default is "advanced".'),
-  max_results: z.number().optional().describe('Optional: Max results to return (1-10). Default is 5.'),
-  include_answer: z.boolean().optional().describe('Optional: Include an AI-generated answer summary. Default is false.'),
-  include_raw_content: z.boolean().optional().describe('Optional: Include the raw HTML content. Default is false.'),
-  time_range: z.enum(['day', 'week', 'month', 'year']).optional().describe('Optional: Time range filter.'),
-  topic: z.enum(['general', 'news', 'finance']).optional().describe('Optional: Topic focus ("general", "news", "finance"). Default is "general".'),
-});
+// --- Define the Manual JSON Schema for tavilySearch ---
+const tavilySearchSchema = {
+  type: 'object',
+  properties: {
+    query: {
+      type: 'string',
+      description: 'The search query to look up. Make this specific, clear, and concise (under 300 characters).'
+    },
+    include_domains: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Optional: List of domains to specifically include (e.g., ["example.com"]).'
+    },
+    exclude_domains: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Optional: List of domains to specifically exclude.'
+    },
+    search_depth: {
+      type: 'string',
+      enum: ['basic', 'advanced'],
+      description: 'Optional: Search depth ("basic" or "advanced"). Default: "advanced".'
+    },
+    max_results: {
+      type: 'number',
+      description: 'Optional: Max results to return (1-10). Default: 5.'
+    },
+    include_answer: {
+      type: 'boolean',
+      description: 'Optional: Include an AI-generated answer summary. Default: false.'
+    },
+    include_raw_content: {
+      type: 'boolean',
+      description: 'Optional: Include the raw HTML content. Default: false.'
+    },
+    time_range: {
+      type: 'string',
+      enum: ['day', 'week', 'month', 'year'],
+      description: 'Optional: Time range filter.'
+    },
+    topic: {
+      type: 'string',
+      enum: ['general', 'news', 'finance'],
+      description: 'Optional: Topic focus ("general", "news", "finance"). Default: "general".'
+    }
+  },
+  required: ['query'] // ONLY 'query' is required
+};
+// --- End Manual Schema Definition ---
 
 export const tavilySearch = tool({
   description: 'Search the web for real-time information using Tavily search engine. Use this tool to find current information, news, and data not available in the AI\'s training data. Perfect for fact-checking, finding recent events, and answering queries about current information.',
-  parameters: tavilySearchParams,
+  // @ts-ignore - Using parametersSchema to bypass SDK/o3-mini Zod schema incompatibility
+  parametersSchema: tavilySearchSchema,
   execute: async ({ 
     query, 
     include_domains, 
