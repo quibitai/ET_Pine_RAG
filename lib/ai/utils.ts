@@ -17,29 +17,43 @@ const openai = new OpenAI({
  * Enhances a user search query using an LLM to optimize it for web search
  * @param originalQuery The original query from the user
  * @param chatHistory Optional conversation context to improve query enhancement
+ * @param systemPrompt Optional system prompt of the calling assistant for context
+ * @param ragContext Optional document context from RAG for additional context
  * @returns An enhanced query string optimized for web search
  */
 export async function enhanceSearchQuery(
   originalQuery: string,
-  chatHistory?: string
+  chatHistory?: string,
+  systemPrompt?: string,
+  ragContext?: string
 ): Promise<string> {
   try {
     console.time('enhance_search_query');
     console.log(`Enhancing search query: "${originalQuery}"`);
+    console.log(`Using system prompt context: ${systemPrompt ? 'Yes' : 'No'}`);
+    console.log(`Using RAG context: ${ragContext ? 'Yes (' + ragContext.length + ' chars)' : 'No'}`);
     
     // Construct the prompt for the LLM
-    const prompt = `You are a search query optimization expert focusing on finding RECENT NEWS articles.
-Given the user's query and optional conversation context, rewrite the query to be most effective for finding timely news from reliable sources about the main subject.
-If a location is mentioned in the original query or context, incorporate it.
-Return only the single best search query string.
-${chatHistory ? `\nConversation Context: ${chatHistory}` : ''}
+    const prompt = `You are a search query optimization expert.
+Given the user's query, optional conversation context, the calling AI assistant's system prompt context, and relevant document context (RAG), rewrite the query for optimal web search results.
+Prioritize recent information and news unless the query or context suggests otherwise.
+Use the system prompt context to understand the assistant's domain (e.g., creative agency) and tailor the search accordingly.
+Use the RAG context to incorporate relevant keywords or concepts from the user's documents if applicable.
+Return ONLY the single best search query string.
+
+${systemPrompt ? `--- Calling Model System Prompt Context ---\n${systemPrompt}\n--- End System Context ---` : ''}
+
+${ragContext ? `--- Relevant Document (RAG) Context ---\n${ragContext}\n--- End RAG Context ---` : ''}
+
+${chatHistory ? `\n--- Conversation History ---\n${chatHistory}\n--- End History ---` : ''}
+
 \nUser Query: "${originalQuery}"
 \nOptimized Search Query:`;
 
     // Use a fast model for quick response
     const { text: enhancedQuery } = await generateText({
       model: myProvider.languageModel('openai-chat-model'),
-      system: 'You are a search query optimization assistant. Your job is to reformulate user queries to improve web search results. Return ONLY the optimized query text with no additional commentary, explanation, or formatting.',
+      system: 'You are a search query optimization assistant. Reformulate user queries for optimal web search based on all provided context. Return ONLY the optimized query string.',
       prompt: prompt,
     });
 

@@ -28,7 +28,7 @@ import { getWeather } from '@/lib/ai/tools/get-weather';
 import { tavilySearch } from '@/lib/ai/tools/tavily-search';
 import { isProductionEnvironment } from '@/lib/constants';
 import { myProvider } from '@/lib/ai/providers';
-import { generateEmbeddings } from '@/lib/ai/utils';
+import { generateEmbeddings, enhanceSearchQuery } from '@/lib/ai/utils';
 import { getPineconeIndex, queryPineconeWithDiagnostics } from '@/lib/pinecone-client';
 
 // Set maxDuration to comply with Vercel Hobby plan limits (max 60 seconds)
@@ -1004,7 +1004,7 @@ ${contextInstructions}`;
     ));
     
     const response = createDataStreamResponse({
-      execute: (dataStream) => {
+      execute: async (dataStream) => {
         console.log("Streaming text from AI model");
         console.time('ai_model_streaming');
         const streamingStartTime = Date.now();
@@ -1115,11 +1115,50 @@ ${contextInstructions}`;
           ? systemPrompt({ selectedChatModel }) 
           : systemPrompt;
         
+        // --- Enhance User Query for Search ---
+        console.time('enhance_search_query');
+        let enhancedUserQuery = '';
+        const userQuery = userMessage.parts[0] && 'text' in userMessage.parts[0] ? userMessage.parts[0].text : '';
+        
+        // Function to enhance the query
+        const enhanceQuery = async () => {
+          if (userQuery) {
+            try {
+              // Enhance the query using the current system prompt and RAG context
+              const enhanced = await enhanceSearchQuery(
+                  userQuery,
+                  undefined, // Pass actual chat history if needed/available here
+                  baseSystemPrompt, // Pass the base system prompt for context
+                  contextText // Pass the retrieved RAG context
+              );
+              console.log(`[API Chat] Original Query: "${userQuery}"`);
+              console.log(`[API Chat] Enhanced Query: "${enhanced}"`);
+              return enhanced;
+            } catch (error) {
+              console.error('Error enhancing search query:', error);
+              return '';
+            }
+          }
+          return '';
+        };
+        
+        // Since we're already in an async function (POST), we can await directly
+        enhancedUserQuery = await enhanceQuery();
+        console.timeEnd('enhance_search_query');
+        // --- End Enhance User Query ---
+        
         // Add context to system prompt if available
         let finalSystemPrompt = baseSystemPrompt;
         if (combinedContext) {
           finalSystemPrompt = `${baseSystemPrompt}\n\n${combinedContext}`;
           console.log("Enhanced system prompt with context");
+        }
+        
+        // Add instruction for using the enhanced query with the Tavily tool
+        if (userQuery && enhancedUserQuery && enhancedUserQuery !== userQuery) {
+          const searchInstruction = `\n\nIMPORTANT SEARCH INSTRUCTION: If you need to use the 'tavilySearch' tool to find information about the user's latest query ('${userQuery}'), you MUST use the following optimized query instead: "${enhancedUserQuery}". Pass this optimized query as the 'query' argument to the 'tavilySearch' tool.`;
+          finalSystemPrompt += searchInstruction;
+          console.log("[API Chat] Added enhanced search query instruction to system prompt.");
         }
         
         const result = streamText({

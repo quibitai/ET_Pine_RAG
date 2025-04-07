@@ -1,7 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
-import { enhanceSearchQuery } from '@/lib/ai/utils';
 
 // Initialize Tavily client with API key from environment variables
 const tvly = tavily({
@@ -9,23 +8,20 @@ const tvly = tavily({
 });
 
 export const tavilySearch = tool({
-  description: 'Search the web for real-time information using Tavily search engine',
+  description: 'Search the web for real-time information using Tavily search engine. Expects an optimized query.',
   parameters: z.object({
-    query: z.string().describe('The search query to look up on the web'),
+    query: z.string().describe('The optimized search query to look up on the web'),
   }),
   execute: async ({ query }) => {
     try {
-      console.log('Received original search query:', query);
+      console.log('Received search query:', query);
       
-      // Enhance the query using the LLM-powered function
-      const enhancedQuery = await enhanceSearchQuery(query);
-      console.log('Enhanced search query:', enhancedQuery);
+      // Use the provided query directly, assuming it's already enhanced
+      const searchQuery = query;
+      console.log(`[Tavily Tool] Executing search with provided query: "${searchQuery}"`);
       
-      // Log the exact query being sent to Tavily
-      console.log(`[Tavily Tool] Executing search with enhanced query: "${enhancedQuery}"`);
-      
-      // Perform a search with the Tavily API using the enhanced query
-      const response = await tvly.search(enhancedQuery, {
+      // Perform a search with the Tavily API using the provided query
+      const response = await tvly.search(searchQuery, {
         search_depth: 'advanced',
         include_domains: [],
         exclude_domains: [],
@@ -48,8 +44,7 @@ export const tavilySearch = tool({
       return {
         results: processedResults,
         query: {
-          original: query,
-          enhanced: enhancedQuery
+          executed: searchQuery // Record the query that was actually executed
         },
         message: 'Search completed successfully',
       };
@@ -58,8 +53,7 @@ export const tavilySearch = tool({
       return {
         results: [],
         query: {
-          original: query,
-          enhanced: null
+          executed: query // Record the query attempted
         },
         message: `Error performing web search: ${error instanceof Error ? error.message : String(error)}`,
       };
