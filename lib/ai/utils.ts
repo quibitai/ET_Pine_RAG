@@ -28,39 +28,56 @@ export async function enhanceSearchQuery(
   ragContext?: string
 ): Promise<string> {
   try {
-    console.time('enhance_search_query');
+    const timeLabel = `enhance_search_query_${Date.now()}`;
+    console.time(timeLabel);
     console.log(`Enhancing search query: "${originalQuery}"`);
     console.log(`Using system prompt context: ${systemPrompt ? 'Yes' : 'No'}`);
     console.log(`Using RAG context: ${ragContext ? 'Yes (' + ragContext.length + ' chars)' : 'No'}`);
     
     // Construct the prompt for the LLM
-    const prompt = `You are a search query optimization expert.
-Given the user's query, optional conversation context, the calling AI assistant's system prompt context, and relevant document context (RAG), rewrite the query for optimal web search results.
-Prioritize recent information and news unless the query or context suggests otherwise.
-Use the system prompt context to understand the assistant's domain (e.g., creative agency) and tailor the search accordingly.
-Use the RAG context to incorporate relevant keywords or concepts from the user's documents if applicable.
-Return ONLY the single best search query string.
+    const prompt = `You are an expert research query formulation specialist with deep expertise in information retrieval, search algorithms, and knowledge discovery.
 
-${systemPrompt ? `--- Calling Model System Prompt Context ---\n${systemPrompt}\n--- End System Context ---` : ''}
+Your task is to transform the user's original query into an optimized search query that will yield the most relevant, authoritative, and comprehensive results.
 
-${ragContext ? `--- Relevant Document (RAG) Context ---\n${ragContext}\n--- End RAG Context ---` : ''}
+GOALS:
+1. Create a search query that captures the core information need
+2. Add precision through specific terminology relevant to the domain
+3. Include alternative phrasings for key concepts to expand coverage
+4. Incorporate relevant contextual information from provided RAG context
+5. Prioritize recency for time-sensitive topics
+6. Structure the query for maximum relevance in web search engines
 
-${chatHistory ? `\n--- Conversation History ---\n${chatHistory}\n--- End History ---` : ''}
+${systemPrompt ? `DOMAIN CONTEXT:\n${systemPrompt.substring(0, 1000)}\n\nThe above context describes the AI assistant's purpose and domain expertise. Use this to inform your query formulation.` : ''}
 
-\nUser Query: "${originalQuery}"
-\nOptimized Search Query:`;
+${ragContext ? `KNOWLEDGE BASE CONTEXT:\n${ragContext.substring(0, 1500)}\n\nThe above contains relevant information from the user's document repository. Incorporate key terms, entities, and concepts from this context into your query if they're relevant to the user's information need.` : ''}
+
+${chatHistory ? `\nCONVERSATION HISTORY:\n${chatHistory}\n\nThe above shows previous exchanges. Use this to maintain continuity and build upon established context.` : ''}
+
+INSTRUCTIONS:
+- Analyze the user's query to identify the core information need and subject domain
+- Extract key entities, concepts, and relationships
+- Add domain-specific terminology that search engines would recognize
+- Include synonyms or alternative phrasings for key terms
+- Specify recency requirements for time-sensitive topics (e.g., "recent", "2023", "latest")
+- Remove unnecessary conversational elements or filler words
+- Structure the query to work optimally with search engines
+- Output ONLY the enhanced search query, nothing else
+
+Original Query: "${originalQuery}"
+
+Enhanced Query:`;
 
     // Use a fast model for quick response
     const { text: enhancedQuery } = await generateText({
       model: myProvider.languageModel('openai-chat-model'),
-      system: 'You are a search query optimization assistant. Reformulate user queries for optimal web search based on all provided context. Return ONLY the optimized query string.',
+      system: 'You are an expert search query optimizer that transforms user queries for optimal web search results. Return ONLY the enhanced query text with no explanations or additional text.',
       prompt: prompt,
     });
 
     const cleanedQuery = enhancedQuery.trim().replace(/^["']|["']$/g, ''); // Remove quotes if the model added them
     
     console.log(`Enhanced query: "${cleanedQuery}"`);
-    console.timeEnd('enhance_search_query');
+    console.timeEnd(timeLabel);
     
     return cleanedQuery;
   } catch (error) {

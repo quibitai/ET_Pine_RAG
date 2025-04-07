@@ -1127,7 +1127,8 @@ ${contextInstructions}`;
           : systemPrompt;
         
         // --- Enhance User Query for Search ---
-        console.time('enhance_search_query');
+        const searchTimeLabel = `enhance_search_query_${Date.now()}`;
+        console.time(searchTimeLabel);
         let enhancedUserQuery = '';
         const userQuery = userMessage.parts[0] && 'text' in userMessage.parts[0] ? userMessage.parts[0].text : '';
         
@@ -1155,7 +1156,7 @@ ${contextInstructions}`;
         
         // Since we're already in an async function (POST), we can await directly
         enhancedUserQuery = await enhanceQuery();
-        console.timeEnd('enhance_search_query');
+        console.timeEnd(searchTimeLabel);
         // --- End Enhance User Query ---
         
         // Add context to system prompt if available
