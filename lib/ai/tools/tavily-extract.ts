@@ -1,4 +1,5 @@
 import { tool } from 'ai';
+import { z } from 'zod';
 import { tavily } from '@tavily/core';
 
 // Initialize Tavily client with API key from environment variables
@@ -16,32 +17,14 @@ interface TavilyExtractResponse {
   [key: string]: any; // Allow for additional fields
 }
 
-// --- Define the Manual JSON Schema for tavilyExtract ---
-const tavilyExtractSchema = {
-  type: 'object',
-  properties: {
-    urls: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Required: List of URLs to extract content from. Should be URLs retrieved from a previous tavilySearch call.'
-    },
-    extract_depth: {
-      type: 'string',
-      enum: ['basic', 'advanced'],
-      description: 'Optional: Depth of extraction. "basic" is faster, "advanced" gets more content but costs more. Default is basic.'
-    },
-    include_images: {
-      type: 'boolean',
-      description: 'Optional: Whether to include images in the extraction. Default is false.'
-    },
-    max_tokens_per_url: {
-      type: 'number',
-      description: 'Optional: Maximum number of tokens to extract per URL. Default is 8000.'
-    }
-  },
-  required: ['urls'] // ONLY 'urls' is required
-};
-// --- End Manual Schema Definition ---
+// Define simplified Zod schema for Tavily extract parameters
+// Making ONLY 'urls' required, all other parameters optional
+const tavilyExtractParams = z.object({
+  urls: z.array(z.string()).describe('Required: List of URLs to extract content from. Should be URLs retrieved from a previous tavilySearch call.'),
+  extract_depth: z.enum(['basic', 'advanced']).optional().describe('Optional: Depth of extraction. "basic" is faster, "advanced" gets more content but costs more. Default is basic.'),
+  include_images: z.boolean().optional().describe('Optional: Whether to include images in the extraction. Default is false.'),
+  max_tokens_per_url: z.number().optional().describe('Optional: Maximum number of tokens to extract per URL. Default is 8000.'),
+});
 
 /**
  * Tavily Extract tool for extracting detailed content from specific URLs
@@ -50,8 +33,7 @@ const tavilyExtractSchema = {
  */
 export const tavilyExtract = tool({
   description: 'Extracts detailed content from a list of specified URLs using the Tavily Extract API. Use this after using tavilySearch to get promising URLs.',
-  // @ts-ignore - Using parametersSchema to bypass SDK/o3-mini Zod schema incompatibility
-  parametersSchema: tavilyExtractSchema,
+  parameters: tavilyExtractParams,
   execute: async ({ 
     urls, 
     extract_depth, 
