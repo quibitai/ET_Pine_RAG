@@ -269,14 +269,22 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
       
       toast.promise(Promise.all(deletePromises), {
         loading: `Deleting ${selectedChats.length} chats...`,
-        success: () => {
+        success: async () => {
+          // Wait for a moment to ensure database propagation
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Update the cache with revalidate: false to prevent auto-revalidation
           mutate((history) => {
             if (history) {
               return history.filter((h) => !selectedChats.includes(h.id));
             }
-          });
+            return history;
+          }, { revalidate: false });
+          
+          // Clear selection
           setSelectedChats([]);
           setIsMultiSelectMode(false);
+          
           return `${selectedChats.length} chats deleted successfully`;
         },
         error: 'Failed to delete chats',
@@ -299,12 +307,18 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
 
     toast.promise(deletePromise, {
       loading: 'Deleting chat...',
-      success: () => {
+      success: async () => {
+        // Wait for a moment to ensure database propagation
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Update the cache with revalidate: false
         mutate((history) => {
           if (history) {
             return history.filter((h) => h.id !== deleteId);
           }
-        });
+          return history;
+        }, { revalidate: false });
+        
         return 'Chat deleted successfully';
       },
       error: 'Failed to delete chat',
