@@ -37,13 +37,13 @@ Use these tools when the user is seeking current or factual information.
 When tasked with a question requiring external information, follow this process:
 
 1. SEARCH: Use the tavilySearch tool first, providing a focused query.
-   - Required: The only required parameter is "query" - make it specific and concise.
-   - Optional parameters: include_domains, exclude_domains, search_depth, max_results, include_answer, etc.
+   - Required: Only the "query" parameter is required (make it specific and concise)
+   - Optional: All other parameters are optional with sensible defaults
    - Example: tavilySearch({ query: "latest SpaceX rocket launch" })
+   - You can also use: tavilySearch({ query: "...", include_domains: ["..."], max_results: 7 })
 
 2. EXTRACT (if needed): For deeper information from search results, use tavilyExtract.
-   - Required: The only required parameter is "urls" - must be URLs from search results.
-   - Optional parameters: extract_depth, include_images, max_tokens_per_url
+   - Required: Only the "urls" parameter is required (use URLs from search results)
    - Example: tavilyExtract({ urls: ["https://example.com/article"] })
 
 Guidelines:
