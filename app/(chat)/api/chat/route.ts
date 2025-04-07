@@ -1324,3 +1324,46 @@ ${contextInstructions}`;
     });
   }
 }
+
+export async function DELETE(request: Request) {
+  // Parse query parameters to get the chat ID
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
+
+  if (!id) {
+    return Response.json({ error: 'Chat ID is required' }, { status: 400 });
+  }
+
+  try {
+    // Get the current session
+    const session = await auth();
+
+    // Ensure the user is authenticated
+    if (!session?.user?.email) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get the chat to verify ownership
+    const chatToDelete = await getChatById({ id });
+    
+    // Make sure the chat exists
+    if (!chatToDelete) {
+      return Response.json({ error: 'Chat not found' }, { status: 404 });
+    }
+
+    // Ensure the user owns the chat
+    if (chatToDelete.userId !== session.user.id) {
+      return Response.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    // Delete the chat
+    logger.info(`Deleting chat: ${id}`, { userId: session.user.id });
+    await deleteChatById({ id });
+    
+    // Return success response
+    return Response.json({ success: true });
+  } catch (error) {
+    logger.error(`Failed to delete chat: ${id}`, error);
+    return Response.json({ error: 'Failed to delete chat' }, { status: 500 });
+  }
+}
