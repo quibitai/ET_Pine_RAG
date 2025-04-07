@@ -46,12 +46,34 @@ export function Chat({
     initialMessages,
     experimental_throttle: 100,
     sendExtraMessageFields: true,
+    onResponse: (response) => {
+      // Extract metadata from response headers if present
+      const metadata = response.headers.get('x-message-metadata');
+      if (metadata) {
+        try {
+          const parsedMetadata = JSON.parse(metadata);
+          // Update the last message with metadata
+          setMessages((messages) => {
+            const lastMessage = messages[messages.length - 1];
+            if (lastMessage && lastMessage.role === 'assistant') {
+              return [
+                ...messages.slice(0, -1),
+                { ...lastMessage, metadata: parsedMetadata }
+              ];
+            }
+            return messages;
+          });
+        } catch (error) {
+          console.error('Failed to parse message metadata:', error);
+        }
+      }
+    },
     generateId: generateUUID,
     onFinish: () => {
       mutate('/api/history');
     },
     onError: () => {
-      toast.error('An error occured, please try again!');
+      toast.error('An error occurred, please try again!');
     },
   });
 

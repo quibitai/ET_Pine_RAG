@@ -1009,14 +1009,28 @@ ${contextInstructions}`;
         console.time('ai_model_streaming');
         const streamingStartTime = Date.now();
         
-        // Create placeholders for context
+        // Create placeholders for context and metadata
         let documentContextText = '';
         let webContextText = '';
         let combinedContext = '';
-        
+        let responseMetadata = {};
+
         // Prepare context from Pinecone/RAG if available
         if (typeof contextText !== 'undefined' && contextText) {
           documentContextText = `DOCUMENT CONTEXT:\n\n${contextText}\n\n`;
+          
+          // Prepare metadata for Pinecone results
+          if (pineconeQueryResults?.matches && pineconeQueryResults.matches.length > 0) {
+            responseMetadata = {
+              ...responseMetadata,
+              contextSources: pineconeQueryResults.matches.map((match: any) => ({
+                source: match.metadata?.source || 'Unknown document',
+                content: match.metadata?.text || '',
+                relevance: match.score ? Math.round(match.score * 100) / 100 : 0
+              })),
+              vectorIds: pineconeQueryResults.matches.map((match: any) => match.id || '')
+            };
+          }
         }
         
         // Check for web search results from previous tool calls
@@ -1102,6 +1116,16 @@ ${contextInstructions}`;
         if (webSearchResults.length > 0) {
           const mostRecentSearchResult = webSearchResults[webSearchResults.length - 1];
           webContextText = formatSearchResultsAsContext(mostRecentSearchResult);
+          
+          // Add search results to metadata
+          responseMetadata = {
+            ...responseMetadata,
+            searchInfo: {
+              original: mostRecentSearchResult?.query?.original || '',
+              enhanced: mostRecentSearchResult?.query?.enhanced || '',
+              results: mostRecentSearchResult?.results || []
+            }
+          };
         }
         
         // Combine contexts with clear separation
@@ -1240,29 +1264,11 @@ ${contextInstructions}`;
                         assistantMessage.experimental_attachments ?? [],
                       createdAt: new Date(),
                       corState: null,
-                      metadata: {
-                        // Add Pinecone context sources if available
-                        ...(pineconeQueryResults?.matches && pineconeQueryResults.matches.length > 0 ? {
-                          contextSources: pineconeQueryResults.matches.map((match: any) => ({
-                            source: match.metadata?.source || 'Unknown document',
-                            content: match.metadata?.text || '',
-                            relevance: match.score ? Math.round(match.score * 100) / 100 : 0
-                          })),
-                          vectorIds: pineconeQueryResults.matches.map((match: any) => match.id || '')
-                        } : {}),
-                        
-                        // Add search information if used
-                        ...(webSearchResults.length > 0 ? {
-                          searchInfo: {
-                            original: webSearchResults[webSearchResults.length - 1]?.query?.original || '',
-                            enhanced: webSearchResults[webSearchResults.length - 1]?.query?.enhanced || '',
-                            results: webSearchResults[webSearchResults.length - 1]?.results || []
-                          }
-                        } : {})
-                      }
+                      metadata: responseMetadata
                     },
                   ],
                 });
+
                 console.timeEnd('save_assistant_message');
                 console.log("Assistant message saved to database");
               } catch (error) {
