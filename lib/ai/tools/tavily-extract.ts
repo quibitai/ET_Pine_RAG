@@ -26,17 +26,22 @@ export const tavilyExtract = tool({
   description: 'Extracts detailed content from a list of specified URLs using the Tavily Extract API. Use this after using tavilySearch to get promising URLs.',
   parameters: z.object({
     urls: z.array(z.string()).describe('A list of URLs to extract content from. Should be URLs retrieved from a previous tavilySearch call.'),
-    extract_depth: z.enum(['basic', 'advanced']).optional().default('basic').describe('Depth of extraction. "basic" is faster, "advanced" gets more content but costs more. Default is basic.'),
-    include_images: z.boolean().optional().default(false).describe('Whether to include images in the extraction. Default is false.'),
-    max_tokens_per_url: z.number().optional().default(8000).describe('Maximum number of tokens to extract per URL. Default is 8000.'),
+    extract_depth: z.enum(['basic', 'advanced']).optional().describe('Depth of extraction. "basic" is faster, "advanced" gets more content but costs more. Default is basic.'),
+    include_images: z.boolean().optional().describe('Whether to include images in the extraction. Default is false.'),
+    max_tokens_per_url: z.number().optional().describe('Maximum number of tokens to extract per URL. Default is 8000.'),
   }),
   execute: async ({ 
     urls, 
-    extract_depth = 'basic', 
-    include_images = false,
-    max_tokens_per_url = 8000
+    extract_depth, 
+    include_images,
+    max_tokens_per_url
   }) => {
     try {
+      // Define final parameters with defaults
+      const final_extract_depth = extract_depth ?? 'basic';
+      const final_include_images = include_images ?? false;
+      const final_max_tokens_per_url = max_tokens_per_url ?? 8000;
+
       if (!urls || urls.length === 0) {
         return {
           message: "No URLs provided for extraction.",
@@ -45,7 +50,7 @@ export const tavilyExtract = tool({
       }
 
       // Log the extraction request
-      console.log(`[Tavily Extract Tool] Extracting content from ${urls.length} URLs with depth=${extract_depth}`);
+      console.log(`[Tavily Extract Tool] Extracting content from ${urls.length} URLs with depth=${final_extract_depth}`);
       
       // Extract content from each URL
       const extractionPromises = urls.map(async (url) => {
@@ -54,9 +59,9 @@ export const tavilyExtract = tool({
           
           // Call Tavily's extract method with URL as array
           const extractResult = await tvly.extract([url], {
-            extract_depth,
-            include_images,
-            max_tokens: max_tokens_per_url,
+            extract_depth: final_extract_depth,
+            include_images: final_include_images,
+            max_tokens: final_max_tokens_per_url,
           }) as TavilyExtractResponse;
           
           // Create a structured result
@@ -68,7 +73,7 @@ export const tavilyExtract = tool({
             full_content: extractResult.full_content || extractResult.content || 'No content extracted',
             date: extractResult.date || null,
             images: extractResult.images || [],
-            extraction_depth: extract_depth
+            extraction_depth: final_extract_depth
           };
         } catch (error) {
           console.error(`[Tavily Extract Tool] Failed to extract content from ${url}:`, error);
@@ -83,7 +88,7 @@ export const tavilyExtract = tool({
             full_content: null,
             date: null,
             images: [],
-            extraction_depth: extract_depth
+            extraction_depth: final_extract_depth
           };
         }
       });

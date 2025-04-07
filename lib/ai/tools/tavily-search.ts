@@ -16,44 +16,54 @@ export const tavilySearch = tool({
     query: z.string().describe('The search query to look up. Make this specific, clear, and concise (under 300 characters).'),
     include_domains: z.array(z.string()).optional().describe('Optional list of domains to specifically include in the search'),
     exclude_domains: z.array(z.string()).optional().describe('Optional list of domains to exclude from the search'),
-    search_depth: z.enum(['basic', 'advanced']).optional().default('advanced').describe('The depth of search to perform. Default is "advanced".'),
-    max_results: z.number().optional().default(5).describe('Maximum number of results to return (1-10). Default is 5.'),
-    include_answer: z.boolean().optional().default(false).describe('Whether to include an AI-generated answer summary. Default is false.'),
-    include_raw_content: z.boolean().optional().default(false).describe('Whether to include the raw HTML content. Default is false.'),
+    search_depth: z.enum(['basic', 'advanced']).optional().describe('The depth of search to perform. Default is "advanced".'),
+    max_results: z.number().optional().describe('Maximum number of results to return (1-10). Default is 5.'),
+    include_answer: z.boolean().optional().describe('Whether to include an AI-generated answer summary. Default is false.'),
+    include_raw_content: z.boolean().optional().describe('Whether to include the raw HTML content. Default is false.'),
     time_range: z.enum(['day', 'week', 'month', 'year']).optional().describe('Time range for search results.'),
-    topic: z.enum(['general', 'news', 'finance']).optional().default('general').describe('Specific topic to focus the search on'),
+    topic: z.enum(['general', 'news', 'finance']).optional().describe('Specific topic to focus the search on. Default is "general".'),
   }),
   execute: async ({ 
     query, 
-    include_domains = [], 
-    exclude_domains = [], 
-    search_depth = 'advanced', 
-    max_results = 5,
-    include_answer = false,
-    include_raw_content = false,
+    include_domains, 
+    exclude_domains, 
+    search_depth, 
+    max_results,
+    include_answer,
+    include_raw_content,
     time_range,
-    topic = 'general'
+    topic
   }) => {
     try {
+      // Define final parameters with defaults
+      const final_include_domains = include_domains ?? [];
+      const final_exclude_domains = exclude_domains ?? [];
+      const final_search_depth = search_depth ?? 'advanced';
+      const final_max_results = max_results ?? 5;
+      const final_include_answer = include_answer ?? false;
+      const final_include_raw_content = include_raw_content ?? false;
+      const final_topic = topic ?? 'general';
+      // time_range doesn't need a default
+
       console.log(`[Tavily Tool] Executing search with query: "${query}"`);
-      console.log(`[Tavily Tool] Search parameters: depth=${search_depth}, max_results=${max_results}, time_range=${time_range || 'default'}, topic=${topic || 'none'}`);
+      console.log(`[Tavily Tool] Search parameters: depth=${final_search_depth}, max_results=${final_max_results}, time_range=${time_range || 'default'}, topic=${final_topic || 'none'}`);
       
       // Ensure max_results is within valid range (1-10) even without schema validation
-      const validatedMaxResults = Math.max(1, Math.min(10, max_results));
-      if (validatedMaxResults !== max_results) {
-        console.log(`[Tavily Tool] Adjusted max_results from ${max_results} to ${validatedMaxResults}`);
+      const validatedMaxResults = Math.max(1, Math.min(10, final_max_results));
+      if (validatedMaxResults !== final_max_results) {
+        console.log(`[Tavily Tool] Adjusted max_results from ${final_max_results} to ${validatedMaxResults}`);
       }
       
       // Perform a search with the Tavily API using provided parameters
       const response = await tvly.search(query, {
-        search_depth,
-        include_domains,
-        exclude_domains,
+        search_depth: final_search_depth,
+        include_domains: final_include_domains,
+        exclude_domains: final_exclude_domains,
         max_results: validatedMaxResults, // Use validated value
-        include_answer,
-        include_raw_content,
+        include_answer: final_include_answer,
+        include_raw_content: final_include_raw_content,
         ...(time_range && { time_range }),
-        ...(topic && { topic })
+        ...(final_topic && { topic: final_topic })
       });
 
       // Log the raw results immediately after receiving them
@@ -79,18 +89,18 @@ export const tavilySearch = tool({
           executed: query
         },
         parameters: {
-          search_depth,
+          search_depth: final_search_depth,
           max_results: validatedMaxResults,
-          include_domains: include_domains.length > 0 ? include_domains : undefined,
-          exclude_domains: exclude_domains.length > 0 ? exclude_domains : undefined,
+          include_domains: final_include_domains.length > 0 ? final_include_domains : undefined,
+          exclude_domains: final_exclude_domains.length > 0 ? final_exclude_domains : undefined,
           time_range: time_range || undefined,
-          topic: topic || undefined
+          topic: final_topic || undefined
         },
         results: filteredResults
       };
       
       // Include the AI-generated answer if it was requested and provided
-      const answer = include_answer && response.answer ? response.answer : undefined;
+      const answer = final_include_answer && response.answer ? response.answer : undefined;
       
       return {
         results: filteredResults,
