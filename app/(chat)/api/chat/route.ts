@@ -26,6 +26,7 @@ import { updateDocument } from '@/lib/ai/tools/update-document';
 import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
 import { getWeather } from '@/lib/ai/tools/get-weather';
 import { tavilySearch } from '@/lib/ai/tools/tavily-search';
+import { tavilyExtract } from '@/lib/ai/tools/tavily-extract';
 import { isProductionEnvironment } from '@/lib/constants';
 import { myProvider } from '@/lib/ai/providers';
 import { generateEmbeddings, enhanceSearchQuery } from '@/lib/ai/utils';
@@ -383,6 +384,33 @@ function formatSearchResultsAsContext(searchResults: any): string {
   });
   
   return webContextText;
+}
+
+// Function to format extract results into structured context
+function formatExtractResultsAsContext(extractResults: any[]): string {
+  if (!extractResults || !Array.isArray(extractResults) || extractResults.length === 0) {
+    return '';
+  }
+  
+  let extractContextText = '\n\nWEB EXTRACT CONTEXT:\n\n';
+  
+  extractResults.forEach((result: any, index: number) => {
+    if (!result || !result.success) return;
+    
+    extractContextText += `Extracted Source ${index + 1}: ${result.title || 'Untitled'} (${result.url || 'No URL'})\n`;
+    
+    // Use full_content if available, otherwise use the summary content
+    const contentToUse = result.full_content || result.content || 'No content extracted';
+    extractContextText += `Content: ${contentToUse}\n`;
+    
+    if (result.date) {
+      extractContextText += `Date: ${result.date}\n`;
+    }
+    
+    extractContextText += '\n';
+  });
+  
+  return extractContextText;
 }
 
 export async function POST(request: Request) {
@@ -1115,6 +1143,48 @@ ${contextInstructions}`;
           );
         }
         
+        // Check for Tavily Extract results and add them to the context if available
+        let extractResults: any[] = [];
+        
+        // Loop through messages to find tool results from tavilyExtract
+        for (const msg of messages) {
+          if ('role' in msg && 
+              typeof msg.role === 'string' && 
+              (msg.role as string) === 'tool' && 
+              'content' in msg && 
+              Array.isArray(msg.content)) {
+              
+            for (const content of msg.content) {
+              if (content && 
+                  typeof content === 'object' && 
+                  'type' in content && 
+                  content.type === 'tool-result' && 
+                  'tool' in content && 
+                  content.tool && 
+                  typeof content.tool === 'object' && 
+                  'name' in content.tool && 
+                  content.tool.name === 'tavilyExtract' &&
+                  'result' in content &&
+                  content.result?.results) {
+                  
+                // Process extract results
+                extractResults = content.result.results;
+                
+                // Format and add extract results to context
+                if (extractResults.length > 0) {
+                  const extractContextText = formatExtractResultsAsContext(extractResults);
+                  
+                  // Add extract context to web context
+                  if (extractContextText) {
+                    webContextText += extractContextText;
+                    console.log(`[API Chat] Added ${extractResults.length} extract results to context`);
+                  }
+                }
+              }
+            }
+          }
+        }
+        
         // Combine contexts with clear separation
         if (documentContextText || webContextText) {
           combinedContext = `${documentContextText}${webContextText ? '\n' + webContextText : ''}`;
@@ -1185,7 +1255,8 @@ ${contextInstructions}`;
                   'createDocument',
                   'updateDocument',
                   'requestSuggestions',
-            'tavilySearch',
+                  'tavilySearch',
+                  'tavilyExtract',
                 ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
@@ -1198,6 +1269,7 @@ ${contextInstructions}`;
               dataStream,
             }),
             tavilySearch,
+            tavilyExtract,
           },
           onFinish: async ({ response }) => {
             const streamingDuration = Date.now() - streamingStartTime;

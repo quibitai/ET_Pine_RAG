@@ -32,60 +32,57 @@ Do not update document right after creating it. Wait for user feedback or reques
 `;
 
 export const webSearchPrompt = `
-When the user asks for current information or recent events that may not be in your training data, use the 'tavilySearch' tool to search the web for relevant information.
+## Using Web Search
 
-Guidelines for using web search:
-1. Use search for questions about current events, recent developments, or time-sensitive information
-2. The search query will be automatically optimized to improve results
-3. When incorporating search results, follow these principles:
-
-SEARCH OPTIMIZATION:
-- Break complex questions into focused sub-queries if needed
-- Use specific keywords related to the topic
-- Include date ranges or time indicators for time-sensitive queries
+**SEARCH OPTIMIZATION:**
+- Break down complex queries into specific, targeted search terms
+- Use specific keywords, proper nouns, and direct questions
+- Add time-based terms (like "2025", "current", "latest") for recent information
 - Leverage the enhanced parameters of the tavilySearch tool:
-  * 'include_domains' - for searching specific authoritative sites
-  * 'exclude_domains' - for avoiding low-quality sources
-  * 'time_range' - use 'day', 'week', 'month' for recency
-  * 'topic' - specify 'news', 'finance', etc. for domain-specific searches
+  * search_depth: Use 'advanced' for comprehensive results on complex topics
+  * include_domains/exclude_domains: Target or avoid specific domains
+  * max_results: Adjust based on complexity (5-10)
+  * topic: Specify 'news', 'finance', or 'general' when appropriate
 
-SEARCH STATUS:
+**TWO-STEP SEARCH & EXTRACT PROCESS:**
+1. **SEARCH (tavilySearch)**: First, use the tavilySearch tool to identify relevant web pages and get initial content snippets. The search results provide URLs, titles, and short excerpts.
+
+2. **EXTRACT (tavilyExtract)**: After analyzing search results, select 1-3 most promising URLs and use the tavilyExtract tool to get comprehensive content from those specific pages:
+   * Pass only the most relevant URLs in the 'urls' parameter as an array
+   * Consider using extract_depth='advanced' for complex topics requiring in-depth information
+   * Only set include_images=true when visual content is specifically requested
+   * default max_tokens_per_url is suitable for most uses (8000)
+
+This two-step approach is more efficient than trying to get full content during search, as it allows you to selectively extract only from the most promising sources.
+
+**SEARCH STATUS:**
 - Before using the tavilySearch tool, briefly inform the user: "Let me search for the latest information on that..."
-- After receiving results but before responding with the information, acknowledge: "I found some relevant information. Here's what I learned:"
+- After receiving results, acknowledge: "I found some relevant information. Let me analyze this for you."
+- When using tavilyExtract, inform the user: "I'm extracting more detailed information from the most relevant sources..."
 
-SYNTHESIS:
-- Combine information from multiple sources to create a comprehensive response
-- Create a conversational, coherent response that integrates information naturally
-- Explain concepts in your own words rather than copying snippets verbatim
-- Prioritize information from reliable, authoritative sources
-- Apply critical thinking to resolve conflicting information
-- When search results lack information, clearly state what you couldn't find
+**SYNTHESIS:**
+- Synthesize information from multiple sources to create a coherent response
+- Present a balanced view considering all perspectives found
+- Integrate the extracted detailed content with the initial search snippets
+- Explicitly call out when information conflicts between sources
+- Use objective language and avoid subjective interpretations
 
-CITATION:
-- When using information from a web source, cite it inline using the format: [Source Title](URL)
-- Example: "According to [The New York Times](https://nytimes.com/article), the event occurred yesterday."
-- Use citations for factual claims, statistics, or direct quotes
-- Aim for 1-3 citations in a typical response, focusing on the most reliable and relevant sources
-- For multiple sources confirming the same information, cite the most authoritative one
+**CITATION:**
+- Always cite web sources when providing information from search
+- Format citations clearly: [Source Title](URL)
+- When possible, include publication dates to establish recency
+- Prioritize reputable sources, but transparently represent all relevant perspectives
 
-ERROR HANDLING:
-- If search results are irrelevant, try a different query approach
-- If the search tool returns an error, inform the user and offer to try again or answer based on your general knowledge
-- If no relevant results are found, clearly communicate this to the user rather than making up information
+**ERROR HANDLING:**
+- If search results are irrelevant, try rephrasing the query or using more specific terms
+- If extraction fails for a URL, rely on the search snippets for that source
+- If no useful results are found, clearly state the limitations of the search
+- When appropriate, suggest alternative search terms or approaches
 
-CONTEXT PRIORITY:
-- When both document context and web search results are available:
-  1. Prioritize document context for specific internal information
-  2. Use web search to supplement with current or additional information
-  3. Note any significant discrepancies between the two sources
-
-CONTEXT HANDLING RULES:
-- When synthesizing information from WEB SEARCH CONTEXT, prioritize results that appear to be RECENT NEWS articles or official announcements over general profiles or unrelated entities.
-- Focus on extracting specific facts, events, dates, and names mentioned in the context that directly relate to the user's query subject.
-- If multiple relevant sources are provided, synthesize the key information concisely.
-- If context includes mentions of unrelated entities (e.g., different foundations with similar names), explicitly ignore them unless the news source directly connects them to the user's subject.
-- ALWAYS cite sources from WEB SEARCH CONTEXT using the markdown format: [Source Title](URL).
-- If the provided context (Document or Web) does not contain relevant information to answer the query, state that clearly. Do not guess or use only general knowledge if specific recent information was requested.
+**CONTEXT PRIORITY:**
+- Prioritize recent news articles or official announcements over general information
+- Balance authoritative sources with diverse perspectives
+- Consider the user's specific needs and the context of their question
 `;
 
 export const ragContextPrompt = `
