@@ -56,17 +56,33 @@ export const tavilySearch = tool({
       console.log(`[Tavily Tool] Raw results received from Tavily:`, JSON.stringify(searchResponse.results, null, 2));
       console.log('Tavily search response received:', searchResponse.results.length, 'results');
       
+      // Save metadata for the response
+      const metadata = {
+        query: {
+          executed: searchQuery
+        },
+        results: searchResponse.results.map(result => ({
+          title: result.title || 'Untitled',
+          url: result.url || '',
+          content: result.content || '',
+          score: result.score || 0
+        }))
+      };
+      
       // Step 2: Select top most relevant results (1-3) based on score
       const topResults = searchResponse.results
         .sort((a, b) => (b.score || 0) - (a.score || 0))
         .slice(0, 3);
       
+      // Instead of returning a JSON structure, return a formatted string
       if (topResults.length === 0) {
-        console.log('[Tavily Tool] No relevant results found');
+        // For empty results, return a plain text message
+        console.log('[Tavily Tool] No relevant results found, returning plain text message');
+        
+        // Still save metadata in a hidden field for debugging
         return {
-          results: [],
-          query: { executed: searchQuery },
-          message: 'No relevant search results found',
+          text: "I couldn't find any relevant search results for your query.",
+          _metadata: metadata
         };
       }
       
@@ -91,21 +107,36 @@ export const tavilySearch = tool({
       
       console.log(`[Tavily Tool] Enhanced ${enhancedResults.length} results with extracted content`);
       
+      // For results with content, return a formatted string
+      const formattedResults = enhancedResults.map(result => {
+        return `TITLE: ${result.title}\nURL: ${result.url}\nCONTENT: ${result.content.substring(0, 500)}...\n`;
+      }).join("\n---\n");
+      
+      const resultText = `Found ${enhancedResults.length} relevant results that might help answer your question:\n\n${formattedResults}`;
+      
+      // Return formatted text with hidden metadata
       return {
-        results: enhancedResults,
-        query: {
-          executed: searchQuery
-        },
-        message: 'Search and extract completed successfully',
+        text: resultText,
+        _metadata: {
+          ...metadata,
+          enhancedResults: enhancedResults.map(r => ({
+            title: r.title,
+            url: r.url,
+            // Truncate content for metadata to keep it manageable
+            content: r.content.substring(0, 1000)
+          }))
+        }
       };
     } catch (error) {
       console.error('Tavily search error:', error);
+      
+      // Return a friendly error message
       return {
-        results: [],
-        query: {
-          executed: query
-        },
-        message: `Error performing web search: ${error instanceof Error ? error.message : String(error)}`,
+        text: "I encountered an error while searching the web. Let me try to answer based on what I already know.",
+        _metadata: {
+          error: error instanceof Error ? error.message : String(error),
+          query: query
+        }
       };
     }
   },
