@@ -58,7 +58,7 @@ INSTRUCTIONS:
 - Extract key entities, concepts, and relationships
 - Add domain-specific terminology that search engines would recognize
 - Include synonyms or alternative phrasings for key terms
-- Specify recency requirements for time-sensitive topics (e.g., "recent", "2023", "latest")
+- Specify recency requirements for time-sensitive topics (e.g., "recent", "2025", "latest")
 - Remove unnecessary conversational elements or filler words
 - Structure the query to work optimally with search engines
 - Output ONLY the enhanced search query, nothing else
