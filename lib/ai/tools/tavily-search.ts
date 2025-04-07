@@ -17,7 +17,7 @@ export const tavilySearch = tool({
     include_domains: z.array(z.string()).optional().describe('Optional list of domains to specifically include in the search'),
     exclude_domains: z.array(z.string()).optional().describe('Optional list of domains to exclude from the search'),
     search_depth: z.enum(['basic', 'advanced']).optional().describe('The depth of search to perform. Default is "advanced".'),
-    max_results: z.number().max(10).optional().describe('Maximum number of results to return (1-10). Default is 5.'),
+    max_results: z.number().optional().describe('Maximum number of results to return (1-10). Default is 5.'),
     include_answer: z.boolean().optional().describe('Whether to include an AI-generated answer summary. Default is false.'),
     include_raw_content: z.boolean().optional().describe('Whether to include the raw HTML content. Default is false.'),
     time_range: z.enum(['day', 'week', 'month', 'year']).optional().describe('Time range for search results.'),
