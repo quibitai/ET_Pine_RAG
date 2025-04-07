@@ -1197,7 +1197,6 @@ ${contextInstructions}`;
                 ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
-          experimental_streamData: true,
           tools: {
             getWeather,
             createDocument: createDocument({ session, dataStream }),
@@ -1286,11 +1285,7 @@ ${contextInstructions}`;
         });
 
         result.consumeStream();
-
-        result.mergeIntoDataStream(dataStream, {
-          sendReasoning: true,
-          metadata: responseMetadata
-        });
+        result.mergeIntoDataStream(dataStream);
       },
       onError: (error) => {
         console.error('Error in data stream:', error);
