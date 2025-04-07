@@ -148,7 +148,7 @@ const DebuggingInfo = ({ message }: { message: ExtendedUIMessage }) => {
             </div>
             
             {/* Only show RAG sources if data exists */}
-            {hasContextSources && (
+            {hasContextSources && metadata.contextSources && (
               <div className="mt-3">
                 <div className="font-medium mb-2">RAG Sources ({metadata.contextSources.length})</div>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
