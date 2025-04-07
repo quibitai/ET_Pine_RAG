@@ -63,6 +63,14 @@ CONTEXT PRIORITY:
   1. Prioritize document context for specific internal information
   2. Use web search to supplement with current or additional information
   3. Note any significant discrepancies between the two sources
+
+CONTEXT HANDLING RULES:
+- When synthesizing information from WEB SEARCH CONTEXT, prioritize results that appear to be RECENT NEWS articles or official announcements over general profiles or unrelated entities.
+- Focus on extracting specific facts, events, dates, and names mentioned in the context that directly relate to the user's query subject.
+- If multiple relevant sources are provided, synthesize the key information concisely.
+- If context includes mentions of unrelated entities (e.g., different foundations with similar names), explicitly ignore them unless the news source directly connects them to the user's subject.
+- ALWAYS cite sources from WEB SEARCH CONTEXT using the markdown format: [cite: Source Title](URL).
+- If the provided context (Document or Web) does not contain relevant information to answer the query, state that clearly. Do not guess or use only general knowledge if specific recent information was requested.
 `;
 
 export const ragContextPrompt = `

@@ -21,6 +21,9 @@ export const tavilySearch = tool({
       const enhancedQuery = await enhanceSearchQuery(query);
       console.log('Enhanced search query:', enhancedQuery);
       
+      // Log the exact query being sent to Tavily
+      console.log(`[Tavily Tool] Executing search with enhanced query: "${enhancedQuery}"`);
+      
       // Perform a search with the Tavily API using the enhanced query
       const response = await tvly.search(enhancedQuery, {
         search_depth: 'advanced',
@@ -29,6 +32,9 @@ export const tavilySearch = tool({
         max_results: 5,
       });
 
+      // Log the raw results immediately after receiving them
+      console.log(`[Tavily Tool] Raw results received from Tavily:`, JSON.stringify(response.results, null, 2));
+      
       console.log('Tavily search response received:', response.results.length, 'results');
       
       // Process results to ensure they're in a consistent format

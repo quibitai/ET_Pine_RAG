@@ -28,10 +28,13 @@ export async function enhanceSearchQuery(
     console.log(`Enhancing search query: "${originalQuery}"`);
     
     // Construct the prompt for the LLM
-    const prompt = `Optimize the following user query for a web search engine like Tavily. 
-Return only the single best search query string that will provide the most relevant and comprehensive results.
+    const prompt = `You are a search query optimization expert focusing on finding RECENT NEWS articles.
+Given the user's query and optional conversation context, rewrite the query to be most effective for finding timely news from reliable sources about the main subject.
+If a location is mentioned in the original query or context, incorporate it.
+Return only the single best search query string.
 ${chatHistory ? `\nConversation Context: ${chatHistory}` : ''}
-\nUser Query: "${originalQuery}"`;
+\nUser Query: "${originalQuery}"
+\nOptimized Search Query:`;
 
     // Use a fast model for quick response
     const { text: enhancedQuery } = await generateText({

@@ -1039,7 +1039,55 @@ ${contextInstructions}`;
                 content.tool.name === 'tavilySearch' &&
                 'result' in content
               ) {
-                webSearchResults.push(content.result);
+                // Apply filtering before adding to webSearchResults
+                const rawResults = content.result?.results;
+                if (Array.isArray(rawResults)) {
+                  const filteredResults = rawResults.filter(result => {
+                    const title = (result.title || '').toLowerCase();
+                    const snippet = (result.content || '').toLowerCase();
+                    
+                    // Basic filtering criteria
+                    const hasNewsKeyword = 
+                      title.includes('news') || 
+                      snippet.includes('news') || 
+                      title.includes('press') || 
+                      snippet.includes('press') ||
+                      title.includes('announces') || 
+                      snippet.includes('announces') ||
+                      title.includes('releases') || 
+                      snippet.includes('releases') ||
+                      title.includes('hosts') || 
+                      snippet.includes('hosts') ||
+                      title.includes('opens') || 
+                      snippet.includes('opens') ||
+                      title.includes('event') || 
+                      snippet.includes('event');
+                      
+                    // Filter out obviously irrelevant results
+                    const isRelevant = 
+                      result.score === undefined || 
+                      result.score > 0.2; // Minimal score threshold if available
+                      
+                    return isRelevant && (hasNewsKeyword || true); // For now, keep all relevant results
+                  });
+                  
+                  console.log(`[API Chat] Filtered Tavily results: ${filteredResults.length} out of ${rawResults.length}`);
+                  
+                  // Store the filtered results
+                  if (filteredResults.length > 0) {
+                    webSearchResults.push({ ...content.result, results: filteredResults });
+                  } else if (rawResults.length > 0) {
+                    // If filtering removed all results but we had some results, keep at least the top one
+                    webSearchResults.push({ 
+                      ...content.result, 
+                      results: [rawResults[0]] 
+                    });
+                    console.log(`[API Chat] All results filtered out, keeping top result as fallback`);
+                  }
+                } else {
+                  // If no array, pass through the original result
+                  webSearchResults.push(content.result);
+                }
               }
             }
           }
