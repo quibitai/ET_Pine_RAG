@@ -32,7 +32,7 @@ Do not update document right after creating it. Wait for user feedback or reques
 `;
 
 export const webSearchPrompt = `
-CRITICAL RULE: Under NO circumstances should you ever include raw JSON code, especially the 'results' or 'query' structure from the search tool, in your response to the user. Your ONLY output related to search results must be a synthesized natural language summary with citations.
+CRITICAL RULE: Your response to the user MUST ONLY contain the synthesized answer derived from the search results and document context, along with appropriate citations ([Source Title](URL)). NEVER include raw JSON code, JSON structures, or verbatim text blocks from the tool results in your final output.
 
 When the user asks for current information or recent events that may not be in your training data, use the 'tavilySearch' tool to search the web for relevant information.
 
@@ -62,14 +62,13 @@ CITATION:
 - Format each citation as: [Title from result](URL from result)
 
 DO NOT:
-- ABSOLUTELY DO NOT output the raw JSON structure containing 'results', 'query', 'score', etc. Ignore the JSON structure itself in your final response
-- NEVER output raw JSON from any tool, especially the search tool
-- NEVER include the raw 'results' array or any JSON structure in your response
-- Do not simply list search results or snippets
-- Do not cite sources for common knowledge or general information
-- Do not overwhelm the response with too many citations
-- Do not make up or hallucinate sources
-- Do not include any debugging information in your response unless specifically requested
+
+DO NOT output any raw JSON structure (e.g., '{ "results": [...] }').
+DO NOT output lists of raw search snippets.
+DO NOT mention the internal tool name ('tavilySearch').
+DO NOT start your response with '{' or '\`'.
+DO NOT enclose your entire response in JSON format.
+ONLY provide the synthesized, conversational answer with citations.
 
 CONTEXT PRIORITY:
 - When both document context and web search results are available:
