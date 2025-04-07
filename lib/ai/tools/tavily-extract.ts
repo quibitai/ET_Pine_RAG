@@ -7,13 +7,14 @@ const tvly = tavily({
   apiKey: process.env.TAVILY_API_KEY || '',
 });
 
-// Define types for Tavily Extract API response
+// Define interface for Tavily Extract response
 interface TavilyExtractResponse {
-  content?: string;
   title?: string;
+  content?: string;
+  full_content?: string;
   date?: string;
   images?: string[];
-  [key: string]: any;
+  [key: string]: any; // Allow for additional fields
 }
 
 /**
@@ -22,12 +23,12 @@ interface TavilyExtractResponse {
  * from promising URLs identified in the search results
  */
 export const tavilyExtract = tool({
-  description: 'Extracts detailed content from a list of specified URLs using the Tavily Extract API. Use this after using tavilySearch to get more comprehensive information from promising URLs.',
+  description: 'Extracts detailed content from a list of specified URLs using the Tavily Extract API. Use this after using tavilySearch to get promising URLs.',
   parameters: z.object({
-    urls: z.array(z.string()).describe('A list of URLs to extract content from. Should be URLs retrieved from a previous tavilySearch call. Limit to 1-3 most relevant URLs.'),
-    extract_depth: z.enum(['basic', 'advanced']).optional().default('basic').describe('Depth of extraction. "basic" is faster, "advanced" gets more content but takes longer. Default is basic.'),
-    include_images: z.boolean().optional().default(false).describe('Whether to include images in the extraction results. Default is false.'),
-    max_tokens_per_url: z.number().optional().default(8000).describe('Maximum number of tokens to extract per URL. Default is 8000. Range: 1000-16000.'),
+    urls: z.array(z.string()).describe('A list of URLs to extract content from. Should be URLs retrieved from a previous tavilySearch call.'),
+    extract_depth: z.enum(['basic', 'advanced']).optional().default('basic').describe('Depth of extraction. "basic" is faster, "advanced" gets more content but costs more. Default is basic.'),
+    include_images: z.boolean().optional().default(false).describe('Whether to include images in the extraction. Default is false.'),
+    max_tokens_per_url: z.number().optional().default(8000).describe('Maximum number of tokens to extract per URL. Default is 8000.'),
   }),
   execute: async ({ 
     urls, 
@@ -36,96 +37,82 @@ export const tavilyExtract = tool({
     max_tokens_per_url = 8000
   }) => {
     try {
-      // Validate input URLs
       if (!urls || urls.length === 0) {
         return {
-          results: [],
-          message: 'No URLs provided for extraction.'
+          message: "No URLs provided for extraction.",
+          results: []
         };
       }
 
-      console.log(`[Tavily Extract] Extracting content from ${urls.length} URLs with depth=${extract_depth}`);
+      // Log the extraction request
+      console.log(`[Tavily Extract Tool] Extracting content from ${urls.length} URLs with depth=${extract_depth}`);
       
-      // Validate max_tokens_per_url
-      const validatedMaxTokens = Math.max(1000, Math.min(16000, max_tokens_per_url));
-      if (validatedMaxTokens !== max_tokens_per_url) {
-        console.log(`[Tavily Extract] Adjusted max_tokens_per_url from ${max_tokens_per_url} to ${validatedMaxTokens}`);
-      }
+      // Extract content from each URL
+      const extractionPromises = urls.map(async (url) => {
+        try {
+          console.log(`[Tavily Extract Tool] Processing URL: ${url}`);
+          
+          // Call Tavily's extract method with URL as array
+          const extractResult = await tvly.extract([url], {
+            extract_depth,
+            include_images,
+            max_tokens: max_tokens_per_url,
+          }) as TavilyExtractResponse;
+          
+          // Create a structured result
+          return {
+            url,
+            success: true,
+            title: extractResult.title || 'No title available',
+            content: extractResult.content || 'No content extracted',
+            full_content: extractResult.full_content || extractResult.content || 'No content extracted',
+            date: extractResult.date || null,
+            images: extractResult.images || [],
+            extraction_depth: extract_depth
+          };
+        } catch (error) {
+          console.error(`[Tavily Extract Tool] Failed to extract content from ${url}:`, error);
+          
+          // Return error information
+          return {
+            url,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+            title: 'Extraction failed',
+            content: 'Failed to extract content from this URL.',
+            full_content: null,
+            date: null,
+            images: [],
+            extraction_depth: extract_depth
+          };
+        }
+      });
       
-      // Call Tavily Extract API
-      const results = await Promise.all(
-        urls.map(async (url) => {
-          try {
-            console.log(`[Tavily Extract] Processing URL: ${url}`);
-            
-            // Call the extract API for this URL - passing the URL as an array as required by the API
-            const response = await tvly.extract([url], {
-              extract_depth,
-              include_images,
-              max_tokens: validatedMaxTokens
-            }) as TavilyExtractResponse;
-            
-            return {
-              url,
-              success: true,
-              title: response.title || 'Untitled',
-              content: response.content || 'No content extracted',
-              contentLength: response.content?.length || 0,
-              date: response.date || null,
-              images: response.images || []
-            };
-          } catch (error) {
-            console.error(`[Tavily Extract] Error extracting content from ${url}:`, error);
-            return {
-              url,
-              success: false,
-              error: error instanceof Error ? error.message : String(error),
-              title: null,
-              content: null,
-              contentLength: 0,
-              date: null,
-              images: []
-            };
-          }
-        })
-      );
+      // Wait for all extractions to complete
+      const results = await Promise.all(extractionPromises);
       
-      // Count successful extractions
-      const successfulExtractions = results.filter(r => r.success).length;
-      console.log(`[Tavily Extract] Completed extraction: ${successfulExtractions}/${urls.length} URLs successful`);
-      
-      // Format results for return
-      const formattedResults = results.map(({ url, success, title, content, contentLength, date, images, error }) => ({
-        url,
-        success,
-        title,
-        content: content ? (content.length > 500 ? `${content.substring(0, 500)}... (${contentLength} chars total)` : content) : null,
-        full_content: content,
-        date,
-        ...(images && images.length > 0 ? { images } : {}),
-        ...(error ? { error } : {})
-      }));
+      // Log the overall results
+      const successCount = results.filter(r => r.success).length;
+      console.log(`[Tavily Extract Tool] Completed extraction: ${successCount}/${urls.length} URLs successful`);
       
       return {
-        results: formattedResults,
-        message: successfulExtractions > 0
-          ? `Successfully extracted content from ${successfulExtractions} of ${urls.length} URLs.`
-          : 'Failed to extract content from any of the provided URLs.'
+        message: `Extracted content from ${successCount} of ${urls.length} URLs.`,
+        results: results
       };
     } catch (error) {
-      console.error('[Tavily Extract] Error during extraction process:', error);
+      console.error('[Tavily Extract Tool] Extraction error:', error);
       
-      // Categorize error types for better debugging
-      let errorMessage = 'Error performing content extraction: ';
+      // Format error message based on type
+      let errorMessage = 'Error extracting content: ';
       
       if (error instanceof Error) {
         if (error.message.includes('rate limit')) {
           errorMessage += 'Rate limit exceeded. Please try again in a moment.';
         } else if (error.message.includes('timeout')) {
-          errorMessage += 'Request timed out. The website may be slow or unresponsive.';
+          errorMessage += 'Extraction timed out. The URLs might be too complex or unavailable.';
         } else if (error.message.includes('api key')) {
           errorMessage += 'API authentication error.';
-          console.error('[Tavily Extract] API key issue detected');
+          console.error('[Tavily Extract Tool] API key issue detected');
         } else {
           errorMessage += error.message;
         }
@@ -134,8 +121,8 @@ export const tavilyExtract = tool({
       }
       
       return {
-        results: [],
-        message: errorMessage
+        message: errorMessage,
+        results: []
       };
     }
   },

@@ -413,6 +413,43 @@ function formatExtractResultsAsContext(extractResults: any[]): string {
   return extractContextText;
 }
 
+/**
+ * Formats Tavily extraction results for display in the chat interface
+ * @param results The extraction results from the tavilyExtract tool
+ */
+function formatTavilyExtractionResults(results: any[]): string {
+  if (!results || results.length === 0) {
+    return "No content was successfully extracted from the provided URLs.";
+  }
+  
+  let extractContextText = "## Extracted Web Content\n\n";
+  
+  results.forEach((result, index) => {
+    if (!result.success) {
+      extractContextText += `Source ${index + 1}: Error extracting content from ${result.url}\n`;
+      if (result.error) {
+        extractContextText += `Error: ${result.error}\n\n`;
+      }
+      return;
+    }
+    
+    extractContextText += `### Source ${index + 1}: ${result.title || 'Untitled'}\n`;
+    extractContextText += `URL: ${result.url}\n`;
+    
+    // Use full_content if available, otherwise use the summary content
+    const contentToUse = result.full_content || result.content || 'No content extracted';
+    extractContextText += `\n${contentToUse}\n`;
+    
+    if (result.date) {
+      extractContextText += `\nPublished: ${result.date}\n`;
+    }
+    
+    extractContextText += '\n---\n\n';
+  });
+  
+  return extractContextText;
+}
+
 export async function POST(request: Request) {
   // Start timing the entire POST handler
   console.time('total_request_duration');
@@ -1172,12 +1209,12 @@ ${contextInstructions}`;
                 
                 // Format and add extract results to context
                 if (extractResults.length > 0) {
-                  const extractContextText = formatExtractResultsAsContext(extractResults);
+                  const formattedExtraction = formatTavilyExtractionResults(extractResults);
                   
                   // Add extract context to web context
-                  if (extractContextText) {
-                    webContextText += extractContextText;
-                    console.log(`[API Chat] Added ${extractResults.length} extract results to context`);
+                  if (formattedExtraction) {
+                    webContextText += formattedExtraction;
+                    console.log(`[API Chat] Added ${extractResults.length} extraction results to context`);
                   }
                 }
               }
@@ -1251,13 +1288,13 @@ ${contextInstructions}`;
           messages: messagesForAI,
           maxSteps: 5,
           experimental_activeTools: [
-                  'getWeather',
-                  'createDocument',
-                  'updateDocument',
-                  'requestSuggestions',
-                  'tavilySearch',
-                  'tavilyExtract',
-                ],
+            'getWeather',
+            'createDocument',
+            'updateDocument',
+            'requestSuggestions',
+            'tavilySearch',
+            'tavilyExtract',
+          ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
           tools: {

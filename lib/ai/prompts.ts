@@ -51,9 +51,16 @@ export const webSearchPrompt = `
    * Pass only the most relevant URLs in the 'urls' parameter as an array
    * Consider using extract_depth='advanced' for complex topics requiring in-depth information
    * Only set include_images=true when visual content is specifically requested
-   * default max_tokens_per_url is suitable for most uses (8000)
+   * The default max_tokens_per_url is suitable for most uses (8000)
 
-This two-step approach is more efficient than trying to get full content during search, as it allows you to selectively extract only from the most promising sources.
+This two-step approach is more efficient than using include_raw_content=true during search, as it allows you to selectively extract only from the most promising sources and get more detailed information.
+
+**When to use tavilyExtract:**
+- After reviewing search results to determine which sources are most relevant
+- When search result snippets are insufficient to provide a complete answer
+- For questions requiring deep analysis of specific web pages
+- When the user asks for detailed information from particular sources
+- When you need to access information behind "Read more" links in search results
 
 **SEARCH STATUS:**
 - Before using the tavilySearch tool, briefly inform the user: "Let me search for the latest information on that..."
