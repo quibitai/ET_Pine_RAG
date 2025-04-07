@@ -102,4 +102,19 @@ All notable changes to the ET Pine RAG project will be documented in this file.
 ### Fixed
 - QStash signature verification issues
 - Body reading problems with proper streaming
-- Error handling in RAG worker 
+- Error handling in RAG worker
+
+## [2.5.0] - 2025-04-07
+
+### Added
+- Improved Pinecone cleanup script with reliable implementation
+- Shell script wrapper (`run-cleanup.sh`) for easy Pinecone cleanup
+- Better error handling and reporting during vector deletion process
+
+### Fixed
+- Resolved Pinecone connection issues in cleanup script
+- Fixed initialization problems when connecting to Pinecone index
+
+### Usage
+- Run `./run-cleanup.sh` to clean up vectors from your Pinecone index
+- The script will prompt for index name or use the default "et" index 
