@@ -30,11 +30,7 @@ import { isProductionEnvironment } from '@/lib/constants';
 import { myProvider } from '@/lib/ai/providers';
 import { generateEmbeddings, enhanceSearchQuery } from '@/lib/ai/utils';
 import { getPineconeIndex, queryPineconeWithDiagnostics } from '@/lib/pinecone-client';
-
-// Add type declaration for global variable
-declare global {
-  var lastTavilySearchInfo: any;
-}
+import logger from '@/lib/logger';
 
 // Set maxDuration to comply with Vercel Hobby plan limits (max 60 seconds)
 export const maxDuration = 60;
@@ -78,8 +74,6 @@ function formatResponse(text: string): string {
   }
   
   // Format JSON responses correctly - detect direct JSON output that should be formatted
-  // Removing this block to ensure we see exactly what the LLM outputs
-  /* 
   if (cleanedText.trim().startsWith('{') && cleanedText.includes('"results":')) {
     try {
       // This looks like raw Tavily results being output directly
@@ -88,26 +82,15 @@ function formatResponse(text: string): string {
       // Check if this is Tavily search results
       if (jsonData.results && Array.isArray(jsonData.results)) {
         // Create a formatted version of the search results
-        let formattedResults = "Here are some recent news stories I found:\n\n";
+        let formattedResults = "Here's what I found from my web search:\n\n";
         
         jsonData.results.forEach((result: any, index: number) => {
-          // Extract title and URL from the result
-          const title = result.title || 'Untitled';
-          const url = result.url || '';
-          
-          // Extract and clean up the content (first paragraph only for brevity)
-          let content = result.content || '';
-          content = content.split('\n')[0]; // First paragraph only
-          
-          // Add a numbered entry with title as a link, and the first part of the content
-          formattedResults += `${index + 1}. **${title}**\n`;
-          if (content) {
-            formattedResults += `   ${content}\n`;
+          formattedResults += `${index + 1}. **${result.title || 'Untitled'}**\n`;
+          formattedResults += `   ${result.url || ''}\n`;
+          if (result.content) {
+            formattedResults += `   ${result.content.substring(0, 200)}...\n\n`;
           }
-          formattedResults += `   [Read more](${url})\n\n`;
         });
-        
-        formattedResults += "These stories highlight the most relevant recent information based on your query.";
         
         return formattedResults;
       }
@@ -116,7 +99,6 @@ function formatResponse(text: string): string {
       console.log("Attempted to parse JSON in response but failed:", e);
     }
   }
-  */
   
   return cleanedText.trim();
 }
@@ -702,17 +684,17 @@ export async function POST(request: Request) {
     if (userMessage.parts[0] && 'text' in userMessage.parts[0] && userMessage.parts[0].text) {
       try {
         const userQuery = userMessage.parts[0].text;
-        console.log("Retrieving relevant document context for:", userQuery.substring(0, 100) + '...');
+        logger.info("Retrieving relevant document context", { query: userQuery.substring(0, 100) + '...' });
         
         // Time the embedding generation
         console.time('embedding_generation');
-        console.log(`Starting embedding generation for query (${userQuery.length} chars)`);
+        logger.debug(`Starting embedding generation for query`, { queryLength: userQuery.length });
         const embedding = await generateEmbeddings(userQuery);
         console.timeEnd('embedding_generation');
-        console.log(`Embedding generation complete, vector length: ${embedding.length}`);
+        logger.debug(`Embedding generation complete`, { vectorLength: embedding.length });
         
         // Use enhanced Pinecone diagnostic query
-        console.log("Using enhanced Pinecone diagnostics");
+        logger.info("Using enhanced Pinecone diagnostics");
         try {
           // Use the enhanced diagnostic query function instead of direct index query
           const INDEX_NAME = process.env.PINECONE_INDEX_NAME;
@@ -720,10 +702,10 @@ export async function POST(request: Request) {
             throw new Error('PINECONE_INDEX_NAME environment variable is not defined');
           }
           
-          console.log(`Querying Pinecone with INDEX_NAME: ${INDEX_NAME}, userId filter: ${session.user.id}`);
+          logger.debug(`Querying Pinecone with INDEX_NAME: ${INDEX_NAME}`, { userId: session.user.id });
           
           // Add pre-query diagnostic log
-          console.log('[API Chat] Attempting to call queryPineconeWithDiagnostics...');
+          logger.debug('[API Chat] Attempting to call queryPineconeWithDiagnostics...');
           
           try {
             pineconeQueryResults = await queryPineconeWithDiagnostics(
@@ -732,6 +714,9 @@ export async function POST(request: Request) {
               5,
               { userId: session.user.id }
             );
+            
+            // Log the RAG context results using our specialized logger
+            logger.ragContext(session.user.id, userQuery, pineconeQueryResults);
             
             if (pineconeQueryResults.matches && Array.isArray(pineconeQueryResults.matches) && pineconeQueryResults.matches.length > 0) {
               console.time('process_query_results');
@@ -746,21 +731,18 @@ export async function POST(request: Request) {
                 .join('\n\n');
               console.timeEnd('process_query_results');
               
-              console.log(`Found relevant context (${contextText.length} characters)`);
-              console.log(`Retrieved ${pineconeQueryResults.matches.length} relevant chunks from documents`);
+              logger.info(`Found relevant context`, { 
+                charactersLength: contextText.length,
+                chunksCount: pineconeQueryResults.matches.length 
+              });
             } else {
-              console.log('No relevant context found in user documents');
+              logger.info('No relevant context found in user documents');
             }
           } catch (queryError) {
-            console.error('❌ [API Chat] Error executing queryPineconeWithDiagnostics:', queryError);
-            // Log more details if possible
-            if (queryError instanceof Error) {
-              console.error(`Query Error Details: Name=${queryError.name}, Message=${queryError.message}`);
-              console.error(`Stack trace: ${queryError.stack}`);
-            }
+            logger.error('Error executing queryPineconeWithDiagnostics', queryError);
             // Proceed without Pinecone context
             contextText = '';
-            console.log('[API Chat] Proceeding without Pinecone context due to query error.');
+            logger.info('[API Chat] Proceeding without Pinecone context due to query error.');
           }
         } catch (pineconeError) {
           console.error('Error in Pinecone query operation:', pineconeError);
@@ -1028,28 +1010,14 @@ ${contextInstructions}`;
         console.time('ai_model_streaming');
         const streamingStartTime = Date.now();
         
-        // Create placeholders for context and metadata
+        // Create placeholders for context
         let documentContextText = '';
         let webContextText = '';
         let combinedContext = '';
-        let responseMetadata = {};
-
+        
         // Prepare context from Pinecone/RAG if available
         if (typeof contextText !== 'undefined' && contextText) {
           documentContextText = `DOCUMENT CONTEXT:\n\n${contextText}\n\n`;
-          
-          // Prepare metadata for Pinecone results
-          if (pineconeQueryResults?.matches && pineconeQueryResults.matches.length > 0) {
-            responseMetadata = {
-              ...responseMetadata,
-              contextSources: pineconeQueryResults.matches.map((match: any) => ({
-                source: match.metadata?.source || 'Unknown document',
-                content: match.metadata?.text || '',
-                relevance: match.score ? Math.round(match.score * 100) / 100 : 0
-              })),
-              vectorIds: pineconeQueryResults.matches.map((match: any) => match.id || '')
-            };
-          }
         }
         
         // Check for web search results from previous tool calls
@@ -1077,65 +1045,54 @@ ${contextInstructions}`;
                 content.tool.name === 'tavilySearch' &&
                 'result' in content
               ) {
-                // Get the direct result from the tool - should now be a plain string
-                console.log('[API Chat] Found Tavily search result in tool response:', 
-                  typeof content.result === 'string' ? content.result.substring(0, 100) + '...' : content.result);
-                
-                try {
-                  // Check for the global lastTavilySearchInfo first
-                  if (global.lastTavilySearchInfo) {
-                    console.log('[API Chat] Found global lastTavilySearchInfo');
+                // Apply filtering before adding to webSearchResults
+                const rawResults = content.result?.results;
+                if (Array.isArray(rawResults)) {
+                  const filteredResults = rawResults.filter(result => {
+                    const title = (result.title || '').toLowerCase();
+                    const snippet = (result.content || '').toLowerCase();
                     
-                    // Create search info from the global data
-                    const searchInfo = {
-                      original: global.lastTavilySearchInfo.query?.executed || '',
-                      enhanced: global.lastTavilySearchInfo.query?.enhanced || global.lastTavilySearchInfo.query?.executed || '',
-                      results: global.lastTavilySearchInfo.results || []
-                    };
-                    
-                    // Save to responseMetadata
-                    responseMetadata = {
-                      ...responseMetadata,
-                      searchInfo
-                    };
-                    
-                    console.log('[API Chat] Added search metadata from global variable to responseMetadata');
-                    
-                    // Clear the global variable after using it
-                    global.lastTavilySearchInfo = null;
-                  } else {
-                    // Fallback to extracting from tool input
-                    let searchInfo = {};
-                    
-                    // Check if the input object might have the query info
-                    if (content.tool.input && typeof content.tool.input === 'object' && 'query' in content.tool.input) {
-                      // Create basic metadata from the input query
-                      searchInfo = {
-                        original: content.tool.input.query || '',
-                        enhanced: content.tool.input.query || '',
-                        // This will be an empty array, but at least we'll have the query info
-                        results: []
-                      };
+                    // Basic filtering criteria
+                    const hasNewsKeyword = 
+                      title.includes('news') || 
+                      snippet.includes('news') || 
+                      title.includes('press') || 
+                      snippet.includes('press') ||
+                      title.includes('announces') || 
+                      snippet.includes('announces') ||
+                      title.includes('releases') || 
+                      snippet.includes('releases') ||
+                      title.includes('hosts') || 
+                      snippet.includes('hosts') ||
+                      title.includes('opens') || 
+                      snippet.includes('opens') ||
+                      title.includes('event') || 
+                      snippet.includes('event');
                       
-                      console.log('[API Chat] Created basic metadata from tool input query:', content.tool.input.query);
+                    // Filter out obviously irrelevant results
+                    const isRelevant = 
+                      result.score === undefined || 
+                      result.score > 0.2; // Minimal score threshold if available
                       
-                      // Save to responseMetadata
-                      responseMetadata = {
-                        ...responseMetadata,
-                        searchInfo
-                      };
-                      
-                      console.log('[API Chat] Added search metadata to responseMetadata');
-                    }
-                  }
+                    return isRelevant && (hasNewsKeyword || true); // For now, keep all relevant results
+                  });
                   
-                  // For context, use the text result directly
-                  if (typeof content.result === 'string') {
-                    webContextText = `WEB SEARCH RESULTS:\n\n${content.result}\n\n`;
-                    console.log('[API Chat] Using plain text from Tavily tool response');
+                  console.log(`[API Chat] Filtered Tavily results: ${filteredResults.length} out of ${rawResults.length}`);
+                  
+                  // Store the filtered results
+                  if (filteredResults.length > 0) {
+                    webSearchResults.push({ ...content.result, results: filteredResults });
+                  } else if (rawResults.length > 0) {
+                    // If filtering removed all results but we had some results, keep at least the top one
+                    webSearchResults.push({ 
+                      ...content.result, 
+                      results: [rawResults[0]] 
+                    });
+                    console.log(`[API Chat] All results filtered out, keeping top result as fallback`);
                   }
-                } catch (error) {
-                  console.error('[API Chat] Error processing Tavily result:', error);
+                } else {
+                  // If no array, pass through the original result
+                  webSearchResults.push(content.result);
                 }
               }
             }
@@ -1147,15 +1104,15 @@ ${contextInstructions}`;
           const mostRecentSearchResult = webSearchResults[webSearchResults.length - 1];
           webContextText = formatSearchResultsAsContext(mostRecentSearchResult);
           
-          // Add search results to metadata
-          responseMetadata = {
-            ...responseMetadata,
-            searchInfo: {
-              original: mostRecentSearchResult?.query?.original || '',
-              enhanced: mostRecentSearchResult?.query?.enhanced || '',
-              results: mostRecentSearchResult?.results || []
-            }
-          };
+          // Get the user query if it exists
+          const currentUserQuery = userMessage.parts[0] && 'text' in userMessage.parts[0] ? userMessage.parts[0].text : '';
+          
+          // Log search results with our specialized logger
+          logger.searchInfo(
+            mostRecentSearchResult.query?.original || currentUserQuery,
+            mostRecentSearchResult.query?.enhanced || "N/A",
+            mostRecentSearchResult.results || []
+          );
         }
         
         // Combine contexts with clear separation
@@ -1170,6 +1127,7 @@ ${contextInstructions}`;
           : systemPrompt;
         
         // --- Enhance User Query for Search ---
+        console.time('enhance_search_query');
         let enhancedUserQuery = '';
         const userQuery = userMessage.parts[0] && 'text' in userMessage.parts[0] ? userMessage.parts[0].text : '';
         
@@ -1197,6 +1155,7 @@ ${contextInstructions}`;
         
         // Since we're already in an async function (POST), we can await directly
         enhancedUserQuery = await enhanceQuery();
+        console.timeEnd('enhance_search_query');
         // --- End Enhance User Query ---
         
         // Add context to system prompt if available
@@ -1243,11 +1202,6 @@ ${contextInstructions}`;
             console.timeEnd('stream_text_call');
             console.log(`AI model streaming completed in ${streamingDuration}ms`);
             
-            // Log metadata for debugging
-            if (Object.keys(responseMetadata).length > 0) {
-              console.log('[API Chat] Response metadata to be saved:', JSON.stringify(responseMetadata, null, 2));
-            }
-            
             if (session.user?.id) {
               try {
                 console.time('save_assistant_message');
@@ -1285,9 +1239,7 @@ ${contextInstructions}`;
                   }
                 }
 
-                // Save the message to the database with metadata
-                console.log('[VERCEL DEBUG] Metadata to be saved:', JSON.stringify(responseMetadata, null, 2));
-                
+                // Save the message to the database with corState always set to null
                 await saveMessages({
                   messages: [
                     {
@@ -1299,11 +1251,29 @@ ${contextInstructions}`;
                         assistantMessage.experimental_attachments ?? [],
                       createdAt: new Date(),
                       corState: null,
-                      metadata: responseMetadata
+                      metadata: {
+                        // Add Pinecone context sources if available
+                        ...(pineconeQueryResults?.matches && pineconeQueryResults.matches.length > 0 ? {
+                          contextSources: pineconeQueryResults.matches.map((match: any) => ({
+                            source: match.metadata?.source || 'Unknown document',
+                            content: match.metadata?.text || '',
+                            relevance: match.score ? Math.round(match.score * 100) / 100 : 0
+                          })),
+                          vectorIds: pineconeQueryResults.matches.map((match: any) => match.id || '')
+                        } : {}),
+                        
+                        // Add search information if used
+                        ...(webSearchResults.length > 0 ? {
+                          searchInfo: {
+                            original: webSearchResults[webSearchResults.length - 1]?.query?.original || '',
+                            enhanced: webSearchResults[webSearchResults.length - 1]?.query?.enhanced || '',
+                            results: webSearchResults[webSearchResults.length - 1]?.results || []
+                          }
+                        } : {})
+                      }
                     },
                   ],
                 });
-
                 console.timeEnd('save_assistant_message');
                 console.log("Assistant message saved to database");
               } catch (error) {
@@ -1322,7 +1292,10 @@ ${contextInstructions}`;
         });
 
         result.consumeStream();
-        result.mergeIntoDataStream(dataStream);
+
+        result.mergeIntoDataStream(dataStream, {
+          sendReasoning: true,
+        });
       },
       onError: (error) => {
         console.error('Error in data stream:', error);
