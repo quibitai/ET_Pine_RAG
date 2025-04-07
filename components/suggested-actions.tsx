@@ -13,9 +13,9 @@ interface SuggestedActionsProps {
 function PureSuggestedActions({ chatId, append }: SuggestedActionsProps) {
   const suggestedActions = [
     {
-      title: 'Create a creative pitch',
+      title: 'Develop a creative pitch',
       label: 'for a brand anthem video for Marucci Sports',
-      action: 'Create a creative pitch for a brand anthem video for @https://maruccisports.com/ Include 3 narrative options and a comprehensive budget based on the Echo Tango Rate card and budgets from past projects.',
+      action: 'Develop a creative pitch for a brand anthem video for @https://maruccisports.com/ Include 3 narrative options and a comprehensive budget based on the Echo Tango Rate card and budgets from past projects.',
     },
     {
       title: 'Create a 3D image',
@@ -24,7 +24,7 @@ function PureSuggestedActions({ chatId, append }: SuggestedActionsProps) {
     },
     {
       title: 'Provide a comprehensive overview',
-      label: 'of Echo Tango including their approach to work and ideal client',
+      label: 'of Echo Tango',
       action: 'Provide a comprehensive overview of Echo Tango (echotango.co) including their approach to work and ideal client.',
     }
   ];

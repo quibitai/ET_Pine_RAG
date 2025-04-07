@@ -1,6 +1,6 @@
 {
-  "id": "9cd86e72-f510-42a1-b5e3-7a8e92f04381",
-  "prevId": "8ab28b64-b50e-40f0-9998-85d6000eee71",
+  "id": "f6203433-7c7c-453a-910b-eeab99e0893e",
+  "prevId": "e53ea3a4-3a28-48c6-b7c7-7a8e9c7d0c5d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -240,6 +240,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "corState": {
+          "name": "corState",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false
+        },
         "createdAt": {
           "name": "createdAt",
           "type": "timestamp",
@@ -345,6 +351,19 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "Suggestion_userId_User_id_fk": {
+          "name": "Suggestion_userId_User_id_fk",
+          "tableFrom": "Suggestion",
+          "tableTo": "User",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "Suggestion_documentId_documentCreatedAt_documents_id_createdAt_fk": {
           "name": "Suggestion_documentId_documentCreatedAt_documents_id_createdAt_fk",
           "tableFrom": "Suggestion",
@@ -359,24 +378,11 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "Suggestion_userId_User_id_fk": {
-          "name": "Suggestion_userId_User_id_fk",
-          "tableFrom": "Suggestion",
-          "tableTo": "User",
-          "columnsFrom": [
-            "userId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "Suggestion_id": {
-          "name": "Suggestion_id",
+        "Suggestion_id_pk": {
+          "name": "Suggestion_id_pk",
           "columns": [
             "id"
           ]
@@ -403,10 +409,9 @@
         },
         "password": {
           "name": "password",
-          "type": "varchar",
+          "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": false,
-          "default": null
+          "notNull": false
         }
       },
       "indexes": {},
@@ -467,8 +472,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "Vote_v2_chatId_messageId": {
-          "name": "Vote_v2_chatId_messageId",
+        "Vote_v2_chatId_messageId_pk": {
+          "name": "Vote_v2_chatId_messageId_pk",
           "columns": [
             "chatId",
             "messageId"
@@ -480,9 +485,10 @@
   },
   "enums": {},
   "schemas": {},
+  "sequences": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
+    "tables": {}
   }
-} 
+}

@@ -64,9 +64,16 @@ const initPinecone = () => {
 
     // Add host URL if provided - using correct parameter name
     if (process.env.PINECONE_INDEX_HOST) {
+      // Remove https:// prefix if present
+      let hostUrl = process.env.PINECONE_INDEX_HOST;
+      if (hostUrl.startsWith('https://')) {
+        hostUrl = hostUrl.substring(8);
+        console.log(`Removed https:// prefix from host URL`);
+      }
+      
       // Updated from 'serverlessHost' to 'controllerHostUrl' based on error message
-      clientConfig.controllerHostUrl = process.env.PINECONE_INDEX_HOST;
-      console.log(`Using host URL: ${process.env.PINECONE_INDEX_HOST}`);
+      clientConfig.controllerHostUrl = hostUrl;
+      console.log(`Using host URL: ${hostUrl}`);
     }
 
     // Initialize client
