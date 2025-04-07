@@ -31,92 +31,29 @@ This is a guide for using artifacts tools: \`createDocument\` and \`updateDocume
 Do not update document right after creating it. Wait for user feedback or request to update it.
 `;
 
-export const webSearchPrompt = `
-## Using Web Search
+export const webSearchPrompt = `You have access to search tools to find information on the web. 
+Use these tools when the user is seeking current or factual information.
 
-**SEARCH OPTIMIZATION:**
-- Break down complex queries into specific, targeted search terms
-- Use specific keywords, proper nouns, and direct questions
-- Add time-based terms (like "2025", "current", "latest") for recent information
-- Leverage the enhanced parameters of the tavilySearch tool:
-  * search_depth: Use 'advanced' for comprehensive results on complex topics
-  * include_domains/exclude_domains: Target or avoid specific domains
-  * max_results: Adjust based on complexity (5-10)
-  * topic: Specify 'news', 'finance', or 'general' when appropriate
+When tasked with a question requiring external information, follow this process:
 
-**USING TAVILY TOOLS**
-When using tavilySearch:
-- 'query' (string, required): The only required parameter
-- Optional parameters you can include as needed:
-  * include_domains: Array of domains to include (e.g., ["example.com", "site.org"])
-  * exclude_domains: Array of domains to exclude (e.g., ["pinterest.com", "quora.com"])
-  * search_depth: 'basic' or 'advanced' (default: advanced)
-  * max_results: Number between 1-10 (default: 5)
-  * topic: 'general', 'news', or 'finance' (default: general)
+1. SEARCH: Use the tavilySearch tool first, providing a focused query.
+   - Required: The only required parameter is "query" - make it specific and concise.
+   - Optional parameters: include_domains, exclude_domains, search_depth, max_results, include_answer, etc.
+   - Example: tavilySearch({ query: "latest SpaceX rocket launch" })
 
-Example simple search:
-\`\`\`
-tavilySearch({
-  query: "latest news on AI regulation"
-})
-\`\`\`
+2. EXTRACT (if needed): For deeper information from search results, use tavilyExtract.
+   - Required: The only required parameter is "urls" - must be URLs from search results.
+   - Optional parameters: extract_depth, include_images, max_tokens_per_url
+   - Example: tavilyExtract({ urls: ["https://example.com/article"] })
 
-Example search with options:
-\`\`\`
-tavilySearch({
-  query: "vercel AI SDK documentation",
-  include_domains: ["vercel.com", "sdk.vercel.ai"],
-  max_results: 3
-})
-\`\`\`
+Guidelines:
+- First search, then extract from promising URLs if needed
+- Combine search and extraction for best results
+- Present information in a well-structured, readable format with clear attribution
+- Always indicate which sources provided which information
+- If search doesn't yield relevant results, communicate this clearly and suggest alternative queries
 
-**TWO-STEP SEARCH & EXTRACT PROCESS:**
-1. **SEARCH (tavilySearch)**: First, use the tavilySearch tool to identify relevant web pages and get initial content snippets. The search results provide URLs, titles, and short excerpts.
-
-2. **EXTRACT (tavilyExtract)**: After analyzing search results, select 1-3 most promising URLs and use the tavilyExtract tool to get comprehensive content from those specific pages:
-   * Pass only the most relevant URLs in the 'urls' parameter as an array
-   * Consider using extract_depth='advanced' for complex topics requiring in-depth information
-   * Only set include_images=true when visual content is specifically requested
-   * The default max_tokens_per_url is suitable for most uses (8000)
-
-This two-step approach is more efficient than using include_raw_content=true during search, as it allows you to selectively extract only from the most promising sources and get more detailed information.
-
-**When to use tavilyExtract:**
-- After reviewing search results to determine which sources are most relevant
-- When search result snippets are insufficient to provide a complete answer
-- For questions requiring deep analysis of specific web pages
-- When the user asks for detailed information from particular sources
-- When you need to access information behind "Read more" links in search results
-
-**SEARCH STATUS:**
-- Before using the tavilySearch tool, briefly inform the user: "Let me search for the latest information on that..."
-- After receiving results, acknowledge: "I found some relevant information. Let me analyze this for you."
-- When using tavilyExtract, inform the user: "I'm extracting more detailed information from the most relevant sources..."
-
-**SYNTHESIS:**
-- Synthesize information from multiple sources to create a coherent response
-- Present a balanced view considering all perspectives found
-- Integrate the extracted detailed content with the initial search snippets
-- Explicitly call out when information conflicts between sources
-- Use objective language and avoid subjective interpretations
-
-**CITATION:**
-- Always cite web sources when providing information from search
-- Format citations clearly: [Source Title](URL)
-- When possible, include publication dates to establish recency
-- Prioritize reputable sources, but transparently represent all relevant perspectives
-
-**ERROR HANDLING:**
-- If search results are irrelevant, try rephrasing the query or using more specific terms
-- If extraction fails for a URL, rely on the search snippets for that source
-- If no useful results are found, clearly state the limitations of the search
-- When appropriate, suggest alternative search terms or approaches
-
-**CONTEXT PRIORITY:**
-- Prioritize recent news articles or official announcements over general information
-- Balance authoritative sources with diverse perspectives
-- Consider the user's specific needs and the context of their question
-`;
+Always conduct searches with relevant, targeted queries, then use extract for depth when needed.`;
 
 export const ragContextPrompt = `
 When the user's question relates to information in their uploaded documents, I'll include relevant excerpts as context. Use this context as your primary source of information when it's provided.

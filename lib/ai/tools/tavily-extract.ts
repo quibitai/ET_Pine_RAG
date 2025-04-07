@@ -17,6 +17,14 @@ interface TavilyExtractResponse {
   [key: string]: any; // Allow for additional fields
 }
 
+// Define Zod schema for Tavily extract parameters
+const tavilyExtractParams = z.object({
+  urls: z.array(z.string()).describe('Required: List of URLs to extract content from. Should be URLs retrieved from a previous tavilySearch call.'),
+  extract_depth: z.enum(['basic', 'advanced']).optional().describe('Optional: Depth of extraction. "basic" is faster, "advanced" gets more content but costs more. Default is basic.'),
+  include_images: z.boolean().optional().describe('Optional: Whether to include images in the extraction. Default is false.'),
+  max_tokens_per_url: z.number().optional().describe('Optional: Maximum number of tokens to extract per URL. Default is 8000.'),
+});
+
 /**
  * Tavily Extract tool for extracting detailed content from specific URLs
  * This tool is meant to be used after tavilySearch to get more comprehensive content
@@ -24,12 +32,7 @@ interface TavilyExtractResponse {
  */
 export const tavilyExtract = tool({
   description: 'Extracts detailed content from a list of specified URLs using the Tavily Extract API. Use this after using tavilySearch to get promising URLs.',
-  parameters: z.object({
-    urls: z.array(z.string()).describe('Required: List of URLs to extract content from. Should be URLs retrieved from a previous tavilySearch call.'),
-    extract_depth: z.enum(['basic', 'advanced']).optional().describe('Optional: Depth of extraction. "basic" is faster, "advanced" gets more content but costs more. Default is basic.'),
-    include_images: z.boolean().optional().describe('Optional: Whether to include images in the extraction. Default is false.'),
-    max_tokens_per_url: z.number().optional().describe('Optional: Maximum number of tokens to extract per URL. Default is 8000.'),
-  }),
+  parameters: tavilyExtractParams,
   execute: async ({ 
     urls, 
     extract_depth, 
@@ -53,7 +56,7 @@ export const tavilyExtract = tool({
       console.log(`[Tavily Extract Tool] Extracting content from ${urls.length} URLs with depth=${final_extract_depth}`);
       
       // Extract content from each URL
-      const extractionPromises = urls.map(async (url) => {
+      const extractionPromises = urls.map(async (url: string) => {
         try {
           console.log(`[Tavily Extract Tool] Processing URL: ${url}`);
           
