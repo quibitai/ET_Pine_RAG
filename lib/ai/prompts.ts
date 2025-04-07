@@ -32,7 +32,7 @@ Do not update document right after creating it. Wait for user feedback or reques
 `;
 
 export const webSearchPrompt = `
-CRITICAL RULE: Your response to the user MUST ONLY contain the synthesized answer derived from the search results and document context, along with appropriate citations ([Source Title](URL)). NEVER include raw JSON code, JSON structures, or verbatim text blocks from the tool results in your final output.
+CRITICAL RULE: Your response MUST ONLY contain the synthesized conversational answer based on the provided context (documents and search results). NEVER output raw JSON code, JSON structures, tool names, or verbatim snippets from search results. Format citations as [Source Title](URL).
 
 When the user asks for current information or recent events that may not be in your training data, use the 'tavilySearch' tool to search the web for relevant information.
 
@@ -45,6 +45,7 @@ SYNTHESIS:
 - Combine information from both document context (if available) and web search results
 - Create a conversational, coherent response that integrates the information
 - Focus ONLY on the 'content', 'title', and 'url' fields within the provided search results
+- The 'content' field now contains full extracted web page content, not just snippets, which should be easier to synthesize
 - Extract relevant facts and integrate them smoothly into your response
 - Explain concepts in your own words rather than copying snippets verbatim
 - Prioritize information from reliable sources
@@ -68,6 +69,7 @@ DO NOT output lists of raw search snippets.
 DO NOT mention the internal tool name ('tavilySearch').
 DO NOT start your response with '{' or '\`'.
 DO NOT enclose your entire response in JSON format.
+DO NOT preface your answer with the raw tool results.
 ONLY provide the synthesized, conversational answer with citations.
 
 CONTEXT PRIORITY:

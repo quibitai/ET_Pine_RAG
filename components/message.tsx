@@ -44,107 +44,75 @@ export interface ExtendedUIMessage extends UIMessage {
 
 const DebuggingInfo = ({ message }: { message: ExtendedUIMessage }) => {
   const [isOpen, setIsOpen] = useState(false);
-
-  // Enhanced debugging - log all relevant conditions
-  const hasContextSources = !!message.metadata?.contextSources && message.metadata.contextSources.length > 0;
-  const hasSearchInfo = !!message.metadata?.searchInfo;
+  const metadata = message.metadata;
   
-  // Extract debugging information from message
-  let hasDebuggingInfo = hasContextSources || hasSearchInfo;
-  let documentContext = hasContextSources ? message.metadata?.contextSources : null;
-  let vectorIds: string[] = (hasContextSources && message.metadata?.vectorIds) ? message.metadata.vectorIds : [];
-  let searchInfo = hasSearchInfo ? message.metadata?.searchInfo : null;
-
-  // More detailed console log
-  console.log(`[VERCEL DEBUG] Rendering message ${message.id}: hasContextSources=${hasContextSources}, hasSearchInfo=${hasSearchInfo}, hasDebuggingInfo=${hasDebuggingInfo}, metadata:`, 
-    message.metadata ? JSON.stringify(message.metadata) : 'null or undefined');
-
-  // Debugging for metadata structure if it exists
-  if (message.metadata) {
-    console.log(`[VERCEL DEBUG] Metadata keys:`, Object.keys(message.metadata));
-    if (message.metadata.contextSources) {
-      console.log(`[VERCEL DEBUG] contextSources length:`, message.metadata.contextSources.length);
-    }
-  }
-
-  if (!hasDebuggingInfo) {
-    console.log(`[VERCEL DEBUG] No debugging info available for message ${message.id} - returning null`);
+  // Enhanced debugging console logs
+  console.log(`[VERCEL DEBUG Rendering] Message ${message.id}. Metadata object:`, 
+    metadata ? JSON.stringify(metadata) : 'null/undefined');
+  
+  // TEMPORARY: Only return null if metadata object itself is missing
+  if (!metadata) {
+    console.log(`[VERCEL DEBUG] No metadata object for message ${message.id} - returning null`);
     return null;
   }
-
+  
+  // Always render the container, even if empty, for debugging visibility
   return (
-    <div className="mt-2 border border-gray-200 dark:border-gray-800 rounded-md overflow-hidden">
-      <button 
-        className="w-full flex items-center justify-between p-2 text-sm bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <div className="flex items-center gap-2">
-          <span className="font-medium">Debug Info</span>
-          {documentContext && (
-            <span className="flex items-center gap-1">
-              <DatabaseIcon size={14} /> {vectorIds?.length || documentContext.length} sources
-            </span>
-          )}
-          {searchInfo && (
-            <span className="flex items-center gap-1">
-              <SearchIcon size={14} /> search query
-            </span>
-          )}
-        </div>
-        {isOpen ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
-      </button>
-      
-      {isOpen && (
-        <div className="p-3 text-sm bg-white dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800">
-          {documentContext && (
-            <div className="mb-3">
-              <div className="font-medium mb-2 flex items-center gap-1">
-                <DatabaseIcon size={14} /> Document Sources
-              </div>
-              <div className="max-h-60 overflow-y-auto space-y-2">
-                {documentContext.map((source, i: number) => (
-                  <div key={i} className="p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-800">
-                    <div className="font-medium">{source.source || 'Unknown document'}</div>
-                    {vectorIds && vectorIds[i] && <div className="text-sm text-gray-500 dark:text-gray-400">ID: {vectorIds[i]}</div>}
-                    {source.relevance && <div className="text-sm text-gray-500 dark:text-gray-400">Relevance: {source.relevance}</div>}
-                    {source.content && <div className="mt-1 text-sm whitespace-pre-wrap">{source.content}</div>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {searchInfo && (
-            <div>
-              <div className="font-medium mb-2 flex items-center gap-1">
-                <SearchIcon size={14} /> Search Query
-              </div>
-              <div className="p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-800">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-gray-500 dark:text-gray-400">Original:</div>
-                  <div>{searchInfo.original}</div>
-                  <div className="text-gray-500 dark:text-gray-400">Enhanced:</div>
-                  <div>{searchInfo.enhanced}</div>
+    <details className="mt-2 border border-gray-200 dark:border-gray-800 rounded-md overflow-hidden">
+      <summary className="w-full flex items-center justify-between p-2 text-sm bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+        <span className="font-medium">Debugging Info (Metadata Exists)</span>
+      </summary>
+      <div className="p-3 text-sm bg-white dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800">
+        {/* Try rendering the raw metadata first */}
+        <pre className="whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 p-2 rounded text-xs">
+          {JSON.stringify(metadata, null, 2)}
+        </pre>
+        
+        {/* These sections will be visible once metadata structure is confirmed */}
+        {metadata.contextSources && metadata.contextSources.length > 0 && (
+          <div className="mt-3">
+            <div className="font-medium mb-2">RAG Sources ({metadata.contextSources.length})</div>
+            <div className="space-y-2">
+              {metadata.contextSources.map((source, i) => (
+                <div key={i} className="p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-800">
+                  <div className="font-medium">{source.source || 'Unknown document'}</div>
+                  {source.relevance && <div className="text-xs text-gray-500">Relevance: {source.relevance}</div>}
+                  {source.content && <div className="mt-1 text-xs">{source.content.substring(0, 150)}...</div>}
                 </div>
-                {searchInfo.results && (
-                  <>
-                    <div className="font-medium mt-3 mb-2">Results</div>
-                    <div className="max-h-60 overflow-y-auto space-y-2">
-                      {searchInfo.results.map((result, i: number) => (
-                        <div key={i} className="pb-2 border-b border-gray-200 dark:border-gray-800 last:border-0">
-                          <div className="font-medium">{result.title}</div>
-                          <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-500 hover:underline">{result.url}</a>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
+              ))}
             </div>
-          )}
-        </div>
-      )}
-    </div>
+          </div>
+        )}
+        
+        {metadata.searchInfo && (
+          <div className="mt-3">
+            <div className="font-medium mb-2">Search Info</div>
+            <div className="p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-800">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="text-gray-500">Original:</div>
+                <div>{metadata.searchInfo.original}</div>
+                <div className="text-gray-500">Enhanced:</div>
+                <div>{metadata.searchInfo.enhanced}</div>
+              </div>
+              {metadata.searchInfo.results && (
+                <div className="mt-2">
+                  <div className="font-medium text-xs">Results ({metadata.searchInfo.results.length})</div>
+                  <div className="space-y-1 mt-1">
+                    {metadata.searchInfo.results.slice(0, 3).map((result, i) => (
+                      <div key={i} className="text-xs">
+                        <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                          {result.title || result.url}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </details>
   );
 };
 
@@ -352,6 +320,7 @@ const PurePreviewMessage = ({
               />
             )}
             
+            {/* TEMPORARILY RENDER UNCONDITIONALLY FOR DEBUGGING */}
             {message.role === 'assistant' && (
               <DebuggingInfo message={message} />
             )}
