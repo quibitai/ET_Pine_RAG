@@ -31,6 +31,11 @@ import { myProvider } from '@/lib/ai/providers';
 import { generateEmbeddings, enhanceSearchQuery } from '@/lib/ai/utils';
 import { getPineconeIndex, queryPineconeWithDiagnostics } from '@/lib/pinecone-client';
 
+// Add type declaration for global variable
+declare global {
+  var lastTavilySearchInfo: any;
+}
+
 // Set maxDuration to comply with Vercel Hobby plan limits (max 60 seconds)
 export const maxDuration = 60;
 export const runtime = 'nodejs';
@@ -1077,29 +1082,52 @@ ${contextInstructions}`;
                   typeof content.result === 'string' ? content.result.substring(0, 100) + '...' : content.result);
                 
                 try {
-                  // Handle both the new plain text format and the old structured format for backward compatibility
-                  let searchInfo = {};
-                  
-                  // Check if the input object might have the query info
-                  if (content.tool.input && typeof content.tool.input === 'object' && 'query' in content.tool.input) {
-                    // Create basic metadata from the input query
-                    searchInfo = {
-                      original: content.tool.input.query || '',
-                      enhanced: content.tool.input.query || '',
-                      // This will be an empty array, but at least we'll have the query info
-                      results: []
+                  // Check for the global lastTavilySearchInfo first
+                  if (global.lastTavilySearchInfo) {
+                    console.log('[API Chat] Found global lastTavilySearchInfo');
+                    
+                    // Create search info from the global data
+                    const searchInfo = {
+                      original: global.lastTavilySearchInfo.query?.executed || '',
+                      enhanced: global.lastTavilySearchInfo.query?.enhanced || global.lastTavilySearchInfo.query?.executed || '',
+                      results: global.lastTavilySearchInfo.results || []
                     };
                     
-                    console.log('[API Chat] Created basic metadata from tool input query:', content.tool.input.query);
+                    // Save to responseMetadata
+                    responseMetadata = {
+                      ...responseMetadata,
+                      searchInfo
+                    };
+                    
+                    console.log('[API Chat] Added search metadata from global variable to responseMetadata');
+                    
+                    // Clear the global variable after using it
+                    global.lastTavilySearchInfo = null;
+                  } else {
+                    // Fallback to extracting from tool input
+                    let searchInfo = {};
+                    
+                    // Check if the input object might have the query info
+                    if (content.tool.input && typeof content.tool.input === 'object' && 'query' in content.tool.input) {
+                      // Create basic metadata from the input query
+                      searchInfo = {
+                        original: content.tool.input.query || '',
+                        enhanced: content.tool.input.query || '',
+                        // This will be an empty array, but at least we'll have the query info
+                        results: []
+                      };
+                      
+                      console.log('[API Chat] Created basic metadata from tool input query:', content.tool.input.query);
+                      
+                      // Save to responseMetadata
+                      responseMetadata = {
+                        ...responseMetadata,
+                        searchInfo
+                      };
+                      
+                      console.log('[API Chat] Added search metadata to responseMetadata');
+                    }
                   }
-                  
-                  // Save to responseMetadata regardless of format to ensure we have something
-                  responseMetadata = {
-                    ...responseMetadata,
-                    searchInfo
-                  };
-                  
-                  console.log('[API Chat] Added search metadata to responseMetadata');
                   
                   // For context, use the text result directly
                   if (typeof content.result === 'string') {

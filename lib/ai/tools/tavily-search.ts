@@ -1,3 +1,8 @@
+// Add type declaration at the top of the file
+declare global {
+  var lastTavilySearchInfo: any;
+}
+
 import { tool } from 'ai';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
@@ -56,8 +61,11 @@ export const tavilySearch = tool({
       console.log(`[Tavily Tool] Raw results received from Tavily:`, JSON.stringify(searchResponse.results, null, 2));
       console.log('Tavily search response received:', searchResponse.results.length, 'results');
       
-      // Save metadata for the response
-      const metadata = {
+      // Create basic metadata that will be saved separately in the database
+      console.log('[Tavily Tool] Creating metadata for logging/debugging');
+      
+      // Create search info metadata that will be stored in the database
+      const searchInfo = {
         query: {
           executed: searchQuery
         },
@@ -68,6 +76,12 @@ export const tavilySearch = tool({
           score: result.score || 0
         }))
       };
+      
+      // Log this metadata
+      console.log('[Tavily Tool] Search info metadata created:', JSON.stringify(searchInfo, null, 2));
+      
+      // Export this metadata to global object for route.ts to collect
+      global.lastTavilySearchInfo = searchInfo;
       
       // Step 2: Select top most relevant results (1-3) based on score
       const topResults = searchResponse.results
@@ -111,8 +125,8 @@ export const tavilySearch = tool({
         resultText += `Content: ${result.content.substring(0, 500)}...\n\n`;
       });
       
-      // Store metadata in a separate database field, not as part of the response
-      console.log('[Tavily Tool] Saving search metadata: ', JSON.stringify(metadata, null, 2));
+      // Store metadata in a separate object, not as part of the response
+      console.log('[Tavily Tool] Processing complete, returning formatted text response');
       
       // Directly return plain text with no structured fields
       return resultText;
