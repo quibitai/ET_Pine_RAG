@@ -475,6 +475,7 @@ export async function POST(request: Request) {
                     attachments: userMessage.experimental_attachments ?? [],
                     createdAt: new Date(),
                     corState: null,
+                    metadata: null
                   },
                 ],
               });
@@ -494,6 +495,7 @@ export async function POST(request: Request) {
                     attachments: [],
                     createdAt: new Date(),
                     corState: null,
+                    metadata: null
                   },
                 ],
               });
@@ -587,6 +589,7 @@ export async function POST(request: Request) {
               attachments: userMessage.experimental_attachments ?? [],
               createdAt: new Date(),
               corState: null,
+              metadata: null
             },
           ],
         });
@@ -606,6 +609,7 @@ export async function POST(request: Request) {
               attachments: [],
               createdAt: new Date(),
               corState: initialCorState,
+              metadata: null
             },
           ],
         });
@@ -662,6 +666,7 @@ export async function POST(request: Request) {
           attachments: userMessage.experimental_attachments ?? [],
           createdAt: new Date(),
           corState: null,
+          metadata: null
         },
       ],
     });
@@ -1196,6 +1201,26 @@ ${contextInstructions}`;
                         assistantMessage.experimental_attachments ?? [],
                       createdAt: new Date(),
                       corState: null,
+                      metadata: {
+                        // Add Pinecone context sources if available
+                        ...(pineconeQueryResults?.matches && pineconeQueryResults.matches.length > 0 ? {
+                          contextSources: pineconeQueryResults.matches.map((match: any) => ({
+                            source: match.metadata?.source || 'Unknown document',
+                            content: match.metadata?.text || '',
+                            relevance: match.score ? Math.round(match.score * 100) / 100 : 0
+                          })),
+                          vectorIds: pineconeQueryResults.matches.map((match: any) => match.id || '')
+                        } : {}),
+                        
+                        // Add search information if used
+                        ...(webSearchResults.length > 0 ? {
+                          searchInfo: {
+                            original: webSearchResults[webSearchResults.length - 1]?.query?.original || '',
+                            enhanced: webSearchResults[webSearchResults.length - 1]?.query?.enhanced || '',
+                            results: webSearchResults[webSearchResults.length - 1]?.results || []
+                          }
+                        } : {})
+                      }
                     },
                   ],
                 });

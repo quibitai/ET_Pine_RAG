@@ -19,6 +19,128 @@ import { MessageEditor } from './message-editor';
 import { DocumentPreview } from './document-preview';
 import { MessageReasoning } from './message-reasoning';
 import { UseChatHelpers } from '@ai-sdk/react';
+import { ChevronDownIcon, ChevronUpIcon, DatabaseIcon, SearchIcon } from 'lucide-react';
+
+// Extend UIMessage type to include metadata
+interface ExtendedUIMessage extends UIMessage {
+  metadata?: {
+    contextSources?: Array<{
+      source?: string;
+      content?: string;
+      relevance?: number;
+    }>;
+    vectorIds?: string[];
+    searchInfo?: {
+      original: string;
+      enhanced: string;
+      results?: Array<{
+        title: string;
+        url: string;
+        content?: string;
+      }>;
+    };
+  };
+}
+
+const DebuggingInfo = ({ message }: { message: ExtendedUIMessage }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Extract debugging information from message
+  let hasDebuggingInfo = false;
+  let documentContext = null;
+  let vectorIds: string[] = [];
+  let searchInfo = null;
+
+  // Check for RAG information in metadata
+  if (message.metadata?.contextSources && message.metadata.contextSources.length > 0) {
+    hasDebuggingInfo = true;
+    documentContext = message.metadata.contextSources;
+    vectorIds = message.metadata.vectorIds || [];
+  }
+
+  // Check for search information
+  if (message.metadata?.searchInfo) {
+    hasDebuggingInfo = true;
+    searchInfo = message.metadata.searchInfo;
+  }
+
+  if (!hasDebuggingInfo) return null;
+
+  return (
+    <div className="mt-3 border border-border rounded-md">
+      <button 
+        className="w-full flex items-center justify-between p-2 text-xs text-muted-foreground hover:bg-muted/30 transition-colors"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <div className="flex items-center gap-2">
+          <span className="font-medium">Debug Info</span>
+          {documentContext && (
+            <span className="flex items-center gap-1 text-xs">
+              <DatabaseIcon size={12} /> {vectorIds?.length || documentContext.length} sources
+            </span>
+          )}
+          {searchInfo && (
+            <span className="flex items-center gap-1 text-xs">
+              <SearchIcon size={12} /> search query
+            </span>
+          )}
+        </div>
+        {isOpen ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+      </button>
+      
+      {isOpen && (
+        <div className="p-3 text-xs border-t border-border bg-muted/30">
+          {documentContext && (
+            <div className="mb-3">
+              <div className="font-medium mb-1 flex items-center gap-1">
+                <DatabaseIcon size={12} /> Document Sources
+              </div>
+              <div className="max-h-40 overflow-y-auto">
+                {documentContext.map((source, i: number) => (
+                  <div key={i} className="mb-2 p-2 bg-muted/50 rounded border border-border">
+                    <div className="font-medium">{source.source || 'Unknown document'}</div>
+                    {vectorIds && vectorIds[i] && <div className="text-xs text-muted-foreground">ID: {vectorIds[i]}</div>}
+                    {source.relevance && <div className="text-xs text-muted-foreground">Relevance: {source.relevance}</div>}
+                    {source.content && <div className="mt-1 whitespace-pre-wrap">{source.content}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {searchInfo && (
+            <div>
+              <div className="font-medium mb-1 flex items-center gap-1">
+                <SearchIcon size={12} /> Search Query
+              </div>
+              <div className="p-2 bg-muted/50 rounded border border-border">
+                <div className="grid grid-cols-2 gap-1">
+                  <div className="text-muted-foreground">Original:</div>
+                  <div>{searchInfo.original}</div>
+                  <div className="text-muted-foreground">Enhanced:</div>
+                  <div>{searchInfo.enhanced}</div>
+                </div>
+                {searchInfo.results && (
+                  <>
+                    <div className="font-medium mt-2 mb-1">Results</div>
+                    <div className="max-h-40 overflow-y-auto">
+                      {searchInfo.results.map((result, i: number) => (
+                        <div key={i} className="mb-1 pb-1 border-b border-border last:border-0">
+                          <div className="font-medium">{result.title}</div>
+                          <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500">{result.url}</a>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const PurePreviewMessage = ({
   chatId,
@@ -30,7 +152,7 @@ const PurePreviewMessage = ({
   isReadonly,
 }: {
   chatId: string;
-  message: UIMessage;
+  message: ExtendedUIMessage;
   vote: Vote | undefined;
   isLoading: boolean;
   setMessages: UseChatHelpers['setMessages'];
@@ -222,6 +344,10 @@ const PurePreviewMessage = ({
                 vote={vote}
                 isLoading={isLoading}
               />
+            )}
+            
+            {message.role === 'assistant' && (
+              <DebuggingInfo message={message} />
             )}
           </div>
         </div>
