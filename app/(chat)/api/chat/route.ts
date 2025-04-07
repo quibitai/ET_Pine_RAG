@@ -81,15 +81,26 @@ function formatResponse(text: string): string {
       // Check if this is Tavily search results
       if (jsonData.results && Array.isArray(jsonData.results)) {
         // Create a formatted version of the search results
-        let formattedResults = "Here's what I found from my web search:\n\n";
+        let formattedResults = "Here are some recent news stories I found:\n\n";
         
         jsonData.results.forEach((result: any, index: number) => {
-          formattedResults += `${index + 1}. **${result.title || 'Untitled'}**\n`;
-          formattedResults += `   ${result.url || ''}\n`;
-          if (result.content) {
-            formattedResults += `   ${result.content.substring(0, 200)}...\n\n`;
+          // Extract title and URL from the result
+          const title = result.title || 'Untitled';
+          const url = result.url || '';
+          
+          // Extract and clean up the content (first paragraph only for brevity)
+          let content = result.content || '';
+          content = content.split('\n')[0]; // First paragraph only
+          
+          // Add a numbered entry with title as a link, and the first part of the content
+          formattedResults += `${index + 1}. **${title}**\n`;
+          if (content) {
+            formattedResults += `   ${content}\n`;
           }
+          formattedResults += `   [Read more](${url})\n\n`;
         });
+        
+        formattedResults += "These stories highlight the most relevant recent information based on your query.";
         
         return formattedResults;
       }
