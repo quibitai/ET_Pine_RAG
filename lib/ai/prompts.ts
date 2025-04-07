@@ -44,31 +44,29 @@ export const webSearchPrompt = `
   * max_results: Adjust based on complexity (5-10)
   * topic: Specify 'news', 'finance', or 'general' when appropriate
 
-**IMPORTANT: REQUIRED PARAMETERS FOR TAVILY TOOLS**
-When using the tavilySearch tool:
-- 'query' (string, required): Your search query
-- 'include_domains' (array of strings, required): **You MUST ALWAYS provide this parameter**
-  * If no specific domains to include, pass an empty array: include_domains: []
-  * If filtering for specific domains, pass an array of domains: include_domains: ["example.com", "site.org"]
-- 'exclude_domains' (array of strings, required): **You MUST ALWAYS provide this parameter**
-  * If no domains to exclude, pass an empty array: exclude_domains: []
-  * If excluding specific domains, pass an array of domains: exclude_domains: ["pinterest.com", "reddit.com"]
+**USING TAVILY TOOLS**
+When using tavilySearch:
+- 'query' (string, required): The only required parameter
+- Optional parameters you can include as needed:
+  * include_domains: Array of domains to include (e.g., ["example.com", "site.org"])
+  * exclude_domains: Array of domains to exclude (e.g., ["pinterest.com", "quora.com"])
+  * search_depth: 'basic' or 'advanced' (default: advanced)
+  * max_results: Number between 1-10 (default: 5)
+  * topic: 'general', 'news', or 'finance' (default: general)
 
-Example call when no domain filtering is needed:
+Example simple search:
 \`\`\`
 tavilySearch({
-  query: "latest news on AI regulation",
-  include_domains: [], // Empty array is REQUIRED
-  exclude_domains: []  // Empty array is REQUIRED
+  query: "latest news on AI regulation"
 })
 \`\`\`
 
-Example call with domain filtering:
+Example search with options:
 \`\`\`
 tavilySearch({
   query: "vercel AI SDK documentation",
-  include_domains: ["vercel.com", "sdk.vercel.ai"], 
-  exclude_domains: [] 
+  include_domains: ["vercel.com", "sdk.vercel.ai"],
+  max_results: 3
 })
 \`\`\`
 
