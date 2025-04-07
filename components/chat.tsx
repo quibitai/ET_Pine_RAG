@@ -1,6 +1,7 @@
 'use client';
 
-import type { Attachment, UIMessage } from 'ai';
+import type { Attachment } from 'ai';
+import type { ExtendedUIMessage } from './message';
 import { useChat } from '@ai-sdk/react';
 import { useState } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
@@ -22,7 +23,7 @@ export function Chat({
   isReadonly,
 }: {
   id: string;
-  initialMessages: Array<UIMessage>;
+  initialMessages: Array<ExtendedUIMessage>;
   selectedChatModel: string;
   selectedVisibilityType: VisibilityType;
   isReadonly: boolean;

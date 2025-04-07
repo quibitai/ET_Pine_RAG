@@ -22,7 +22,7 @@ import { UseChatHelpers } from '@ai-sdk/react';
 import { ChevronDownIcon, ChevronUpIcon, DatabaseIcon, SearchIcon } from 'lucide-react';
 
 // Extend UIMessage type to include metadata
-interface ExtendedUIMessage extends UIMessage {
+export interface ExtendedUIMessage extends UIMessage {
   metadata?: {
     contextSources?: Array<{
       source?: string;
@@ -67,41 +67,41 @@ const DebuggingInfo = ({ message }: { message: ExtendedUIMessage }) => {
   if (!hasDebuggingInfo) return null;
 
   return (
-    <div className="mt-3 border border-border rounded-md">
+    <div className="mt-2 border border-gray-200 dark:border-gray-800 rounded-md overflow-hidden">
       <button 
-        className="w-full flex items-center justify-between p-2 text-xs text-muted-foreground hover:bg-muted/30 transition-colors"
+        className="w-full flex items-center justify-between p-2 text-sm bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="flex items-center gap-2">
           <span className="font-medium">Debug Info</span>
           {documentContext && (
-            <span className="flex items-center gap-1 text-xs">
-              <DatabaseIcon size={12} /> {vectorIds?.length || documentContext.length} sources
+            <span className="flex items-center gap-1">
+              <DatabaseIcon size={14} /> {vectorIds?.length || documentContext.length} sources
             </span>
           )}
           {searchInfo && (
-            <span className="flex items-center gap-1 text-xs">
-              <SearchIcon size={12} /> search query
+            <span className="flex items-center gap-1">
+              <SearchIcon size={14} /> search query
             </span>
           )}
         </div>
-        {isOpen ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+        {isOpen ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
       </button>
       
       {isOpen && (
-        <div className="p-3 text-xs border-t border-border bg-muted/30">
+        <div className="p-3 text-sm bg-white dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800">
           {documentContext && (
             <div className="mb-3">
-              <div className="font-medium mb-1 flex items-center gap-1">
-                <DatabaseIcon size={12} /> Document Sources
+              <div className="font-medium mb-2 flex items-center gap-1">
+                <DatabaseIcon size={14} /> Document Sources
               </div>
-              <div className="max-h-40 overflow-y-auto">
+              <div className="max-h-60 overflow-y-auto space-y-2">
                 {documentContext.map((source, i: number) => (
-                  <div key={i} className="mb-2 p-2 bg-muted/50 rounded border border-border">
+                  <div key={i} className="p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-800">
                     <div className="font-medium">{source.source || 'Unknown document'}</div>
-                    {vectorIds && vectorIds[i] && <div className="text-xs text-muted-foreground">ID: {vectorIds[i]}</div>}
-                    {source.relevance && <div className="text-xs text-muted-foreground">Relevance: {source.relevance}</div>}
-                    {source.content && <div className="mt-1 whitespace-pre-wrap">{source.content}</div>}
+                    {vectorIds && vectorIds[i] && <div className="text-sm text-gray-500 dark:text-gray-400">ID: {vectorIds[i]}</div>}
+                    {source.relevance && <div className="text-sm text-gray-500 dark:text-gray-400">Relevance: {source.relevance}</div>}
+                    {source.content && <div className="mt-1 text-sm whitespace-pre-wrap">{source.content}</div>}
                   </div>
                 ))}
               </div>
@@ -110,24 +110,24 @@ const DebuggingInfo = ({ message }: { message: ExtendedUIMessage }) => {
           
           {searchInfo && (
             <div>
-              <div className="font-medium mb-1 flex items-center gap-1">
-                <SearchIcon size={12} /> Search Query
+              <div className="font-medium mb-2 flex items-center gap-1">
+                <SearchIcon size={14} /> Search Query
               </div>
-              <div className="p-2 bg-muted/50 rounded border border-border">
-                <div className="grid grid-cols-2 gap-1">
-                  <div className="text-muted-foreground">Original:</div>
+              <div className="p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-800">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="text-gray-500 dark:text-gray-400">Original:</div>
                   <div>{searchInfo.original}</div>
-                  <div className="text-muted-foreground">Enhanced:</div>
+                  <div className="text-gray-500 dark:text-gray-400">Enhanced:</div>
                   <div>{searchInfo.enhanced}</div>
                 </div>
                 {searchInfo.results && (
                   <>
-                    <div className="font-medium mt-2 mb-1">Results</div>
-                    <div className="max-h-40 overflow-y-auto">
+                    <div className="font-medium mt-3 mb-2">Results</div>
+                    <div className="max-h-60 overflow-y-auto space-y-2">
                       {searchInfo.results.map((result, i: number) => (
-                        <div key={i} className="mb-1 pb-1 border-b border-border last:border-0">
+                        <div key={i} className="pb-2 border-b border-gray-200 dark:border-gray-800 last:border-0">
                           <div className="font-medium">{result.title}</div>
-                          <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500">{result.url}</a>
+                          <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-500 hover:underline">{result.url}</a>
                         </div>
                       ))}
                     </div>

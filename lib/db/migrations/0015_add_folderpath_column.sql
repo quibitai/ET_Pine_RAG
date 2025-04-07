@@ -1,1 +1,0 @@
-ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "folderPath" text; 

@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-
+import type { ExtendedUIMessage } from '@/components/message';
 import { Chat } from '@/components/chat';
 import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
 import { generateUUID } from '@/lib/utils';
@@ -11,13 +11,15 @@ export default async function Page() {
   const cookieStore = await cookies();
   const modelIdFromCookie = cookieStore.get('chat-model');
 
+  const initialMessages: ExtendedUIMessage[] = [];
+
   if (!modelIdFromCookie) {
     return (
       <>
         <Chat
           key={id}
           id={id}
-          initialMessages={[]}
+          initialMessages={initialMessages}
           selectedChatModel={DEFAULT_CHAT_MODEL}
           selectedVisibilityType="private"
           isReadonly={false}
@@ -32,7 +34,7 @@ export default async function Page() {
       <Chat
         key={id}
         id={id}
-        initialMessages={[]}
+        initialMessages={initialMessages}
         selectedChatModel={modelIdFromCookie.value}
         selectedVisibilityType="private"
         isReadonly={false}
