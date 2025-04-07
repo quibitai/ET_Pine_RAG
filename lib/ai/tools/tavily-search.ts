@@ -74,16 +74,11 @@ export const tavilySearch = tool({
         .sort((a, b) => (b.score || 0) - (a.score || 0))
         .slice(0, 3);
       
-      // Instead of returning a JSON structure, return a formatted string
+      // IMPORTANT: Process the results into plain text instead of returning a structured object
       if (topResults.length === 0) {
-        // For empty results, return a plain text message
-        console.log('[Tavily Tool] No relevant results found, returning plain text message');
-        
-        // Still save metadata in a hidden field for debugging
-        return {
-          text: "I couldn't find any relevant search results for your query.",
-          _metadata: metadata
-        };
+        // For empty results, just return a plain text response directly
+        console.log('[Tavily Tool] No relevant results found');
+        return "I couldn't find any relevant search results for your query.";
       }
       
       const topUrls = topResults.map(result => result.url).filter(url => !!url);
@@ -107,37 +102,25 @@ export const tavilySearch = tool({
       
       console.log(`[Tavily Tool] Enhanced ${enhancedResults.length} results with extracted content`);
       
-      // For results with content, return a formatted string
-      const formattedResults = enhancedResults.map(result => {
-        return `TITLE: ${result.title}\nURL: ${result.url}\nCONTENT: ${result.content.substring(0, 500)}...\n`;
-      }).join("\n---\n");
+      // Format the results as a plain text string that the model will directly use
+      let resultText = `Found ${enhancedResults.length} relevant results that might help answer your question:\n\n`;
       
-      const resultText = `Found ${enhancedResults.length} relevant results that might help answer your question:\n\n${formattedResults}`;
+      enhancedResults.forEach((result, index) => {
+        resultText += `[Source ${index+1}]: ${result.title}\n`;
+        resultText += `URL: ${result.url}\n`;
+        resultText += `Content: ${result.content.substring(0, 500)}...\n\n`;
+      });
       
-      // Return formatted text with hidden metadata
-      return {
-        text: resultText,
-        _metadata: {
-          ...metadata,
-          enhancedResults: enhancedResults.map(r => ({
-            title: r.title,
-            url: r.url,
-            // Truncate content for metadata to keep it manageable
-            content: r.content.substring(0, 1000)
-          }))
-        }
-      };
+      // Store metadata in a separate database field, not as part of the response
+      console.log('[Tavily Tool] Saving search metadata: ', JSON.stringify(metadata, null, 2));
+      
+      // Directly return plain text with no structured fields
+      return resultText;
     } catch (error) {
       console.error('Tavily search error:', error);
       
-      // Return a friendly error message
-      return {
-        text: "I encountered an error while searching the web. Let me try to answer based on what I already know.",
-        _metadata: {
-          error: error instanceof Error ? error.message : String(error),
-          query: query
-        }
-      };
+      // Return a friendly error message as plain text
+      return "I encountered an error while searching the web. Let me try to answer based on what I already know.";
     }
   },
 }); 

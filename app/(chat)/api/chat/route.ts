@@ -1072,92 +1072,42 @@ ${contextInstructions}`;
                 content.tool.name === 'tavilySearch' &&
                 'result' in content
               ) {
-                // Apply filtering before adding to webSearchResults
-                // Check for the new _metadata field structure from the Tavily tool response
-                if (content.result && typeof content.result === 'object') {
-                  if ('_metadata' in content.result && content.result._metadata) {
-                    console.log('[API Chat] Found Tavily _metadata in tool response', content.result._metadata);
-                    
-                    // Use the structured metadata directly
-                    const searchMetadata = content.result._metadata;
-                    const searchInfo = {
-                      original: searchMetadata.query?.executed || '',
-                      enhanced: searchMetadata.query?.enhanced || searchMetadata.query?.executed || '',
-                      results: searchMetadata.enhancedResults || searchMetadata.results || []
+                // Get the direct result from the tool - should now be a plain string
+                console.log('[API Chat] Found Tavily search result in tool response:', 
+                  typeof content.result === 'string' ? content.result.substring(0, 100) + '...' : content.result);
+                
+                try {
+                  // Handle both the new plain text format and the old structured format for backward compatibility
+                  let searchInfo = {};
+                  
+                  // Check if the input object might have the query info
+                  if (content.tool.input && typeof content.tool.input === 'object' && 'query' in content.tool.input) {
+                    // Create basic metadata from the input query
+                    searchInfo = {
+                      original: content.tool.input.query || '',
+                      enhanced: content.tool.input.query || '',
+                      // This will be an empty array, but at least we'll have the query info
+                      results: []
                     };
                     
-                    // Save to responseMetadata
-                    responseMetadata = {
-                      ...responseMetadata,
-                      searchInfo
-                    };
-                    
-                    console.log('[API Chat] Added search metadata to responseMetadata');
-                    
-                    // Extract search text result for context inclusion
-                    if ('text' in content.result && typeof content.result.text === 'string') {
-                      webSearchResults.push({
-                        query: { 
-                          original: searchInfo.original,
-                          enhanced: searchInfo.enhanced
-                        },
-                        results: searchInfo.results
-                      });
-                      
-                      webContextText = `WEB SEARCH RESULTS:\n\n${content.result.text}\n\n`;
-                      console.log('[API Chat] Using formatted text from Tavily tool response');
-                    }
-                  } else if ('results' in content.result) {
-                    // Fallback to old behavior for backward compatibility
-                    const rawResults = content.result?.results;
-                    if (Array.isArray(rawResults)) {
-                      const filteredResults = rawResults.filter(result => {
-                        const title = (result.title || '').toLowerCase();
-                        const snippet = (result.content || '').toLowerCase();
-                        
-                        // Basic filtering criteria
-                        const hasNewsKeyword = 
-                          title.includes('news') || 
-                          snippet.includes('news') || 
-                          title.includes('press') || 
-                          snippet.includes('press') ||
-                          title.includes('announces') || 
-                          snippet.includes('announces') ||
-                          title.includes('releases') || 
-                          snippet.includes('releases') ||
-                          title.includes('hosts') || 
-                          snippet.includes('hosts') ||
-                          title.includes('opens') || 
-                          snippet.includes('opens') ||
-                          title.includes('event') || 
-                          snippet.includes('event');
-                          
-                        // Filter out obviously irrelevant results
-                        const isRelevant = 
-                          result.score === undefined || 
-                          result.score > 0.2; // Minimal score threshold if available
-                          
-                        return isRelevant && (hasNewsKeyword || true); // For now, keep all relevant results
-                      });
-                      
-                      console.log(`[API Chat] Filtered Tavily results: ${filteredResults.length} out of ${rawResults.length}`);
-                      
-                      // Store the filtered results
-                      if (filteredResults.length > 0) {
-                        webSearchResults.push({ ...content.result, results: filteredResults });
-                      } else if (rawResults.length > 0) {
-                        // If filtering removed all results but we had some results, keep at least the top one
-                        webSearchResults.push({ 
-                          ...content.result, 
-                          results: [rawResults[0]] 
-                        });
-                        console.log(`[API Chat] All results filtered out, keeping top result as fallback`);
-                      }
-                    } else {
-                      // If no array, pass through the original result
-                      webSearchResults.push(content.result);
-                    }
+                    console.log('[API Chat] Created basic metadata from tool input query:', content.tool.input.query);
                   }
+                  
+                  // Save to responseMetadata regardless of format to ensure we have something
+                  responseMetadata = {
+                    ...responseMetadata,
+                    searchInfo
+                  };
+                  
+                  console.log('[API Chat] Added search metadata to responseMetadata');
+                  
+                  // For context, use the text result directly
+                  if (typeof content.result === 'string') {
+                    webContextText = `WEB SEARCH RESULTS:\n\n${content.result}\n\n`;
+                    console.log('[API Chat] Using plain text from Tavily tool response');
+                  }
+                } catch (error) {
+                  console.error('[API Chat] Error processing Tavily result:', error);
                 }
               }
             }
