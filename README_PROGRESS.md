@@ -2,9 +2,25 @@
 
 This document tracks the progress of our Retrieval-Augmented Generation (RAG) chatbot application.
 
-## Latest Update - v1.1 Release
+## Latest Update - v2.6.0 Release
 
-The ET Pine RAG application has been updated to version 1.1. This release includes:
+The ET Pine RAG application has been updated to version 2.6.0. This release includes:
+
+- **Model Selection Persistence**: Fixed issues with model selection persistence between chats
+- **Search Fallback Strategy**: Added automatic fallback to simpler queries when web searches fail
+- **Tavily Search Improvements**: 
+  - Lowered MIN_RELEVANCE_SCORE threshold from 0.5 to 0.35
+  - Enhanced web search with broader defaults (month timeframe)
+  - Added detailed raw result logging for debugging
+  - Increased default maximum search results from 5 to 7
+- **UI Enhancements**: Prevented raw JSON output in all assistant responses
+- **Query Enhancement**: Improved query enhancement to retain key named entities
+
+## Previous Updates
+
+### v1.1 Release
+
+The ET Pine RAG application was updated to version 1.1. This release included:
 
 - **UUID Validation Fix**: Fixed UUID validation in the `enhanceAttachmentsWithMetadata` function to prevent "invalid input syntax for type uuid" database errors
 - **Improved Document ID Extraction**: Enhanced the methods for extracting document IDs from attachments

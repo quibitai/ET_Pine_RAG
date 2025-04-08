@@ -1,18 +1,19 @@
 # ET Pine RAG - Advanced Next.js RAG Chatbot
 
+> **Note:** RAG, Web Search and Extract working but need improvements
+
 A Retrieval Augmented Generation (RAG) powered chatbot built with Next.js, OpenAI, Pinecone, and Vercel Blob storage.
 
-## Latest Release - v1.8.1
+## Latest Release - v2.6.0
 
-* Added automatic fallback to imageless mode for PDFs exceeding 15 pages
-* Introduced EchoTango Bit assistant persona using GPT-4o Mini model
-* Improved error handling in Document AI processing
-* Added support for image files (JPEG, PNG, TIFF), JSON files, and Google Slides
-* Enhanced error handling in RAG worker to prevent files from getting stuck
-* Added timeout handling for Document AI extraction process
-* Made sidebar open by default for better UX
-* Added back button in Knowledge Base for easier navigation
-* Made chat history sections collapsible for better organization
+* Fixed model selection persistence between chats
+* Added search fallback strategy for failed web searches
+* Lowered Tavily MIN_RELEVANCE_SCORE threshold from 0.5 to 0.35
+* Enhanced web search with broader defaults (month timeframe)
+* Added detailed raw result logging to Tavily search tool
+* Increased default maximum search results from 5 to 7
+* Prevented raw JSON output in all assistant responses
+* Improved query enhancement to retain key named entities
 
 [View all releases](https://github.com/quibitai/ET_Pine_RAG/releases)
 
@@ -186,4 +187,4 @@ Document processing is handled in the background:
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Deployment
-Last deployment: June 21, 2024
+Last deployment: July 14, 2024
