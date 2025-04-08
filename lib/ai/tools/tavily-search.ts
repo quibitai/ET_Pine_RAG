@@ -15,13 +15,13 @@ export const tavilySearch = tool({
   parameters: z.object({
     query: z.string().describe('The search query to look up. Make this specific, clear, and concise (under 300 characters).'),
     include_domains: z.array(z.string()).describe('List of domains to specifically include in the search (provide empty array [] if no specific domains needed)'),
-    exclude_domains: z.array(z.string()).optional().default([]).describe('Optional list of domains to exclude from the search'),
-    search_depth: z.enum(['basic', 'advanced']).optional().default('advanced').describe('The depth of search to perform. Default is "advanced".'),
-    max_results: z.number().optional().default(5).describe('Maximum number of results to return (1-10). Default is 5.'),
-    include_answer: z.boolean().optional().default(false).describe('Whether to include an AI-generated answer summary. Default is false.'),
-    include_raw_content: z.boolean().optional().default(false).describe('Whether to include the raw HTML content. Default is false.'),
-    time_range: z.enum(['day', 'week', 'month', 'year']).optional().describe('Time range for search results.'),
-    topic: z.enum(['general', 'news', 'finance']).optional().default('general').describe('Specific topic to focus the search on'),
+    exclude_domains: z.array(z.string()).describe('List of domains to specifically exclude from the search (provide empty array [] if no domains to exclude)'),
+    search_depth: z.enum(['basic', 'advanced']).describe('The depth of search to perform. Use "advanced" for more comprehensive results.'),
+    max_results: z.number().describe('Maximum number of results to return (1-10). Recommended: 5.'),
+    include_answer: z.boolean().describe('Whether to include an AI-generated answer summary.'),
+    include_raw_content: z.boolean().describe('Whether to include the raw HTML content.'),
+    time_range: z.enum(['day', 'week', 'month', 'year']).describe('Time range for search results.'),
+    topic: z.enum(['general', 'news', 'finance']).describe('Specific topic to focus the search on. Default is "general".'),
   }),
   execute: async ({ 
     query, 
@@ -57,6 +57,12 @@ export const tavilySearch = tool({
         console.warn(`[Tavily Tool ${searchId}] WARNING: include_domains is ${include_domains === undefined ? 'undefined' : typeof include_domains}. Required for o3-mini model.`);
         // Default to empty array to prevent errors
         include_domains = [];
+      }
+      
+      // Ensure exclude_domains is always an array
+      if (!exclude_domains || !Array.isArray(exclude_domains)) {
+        console.warn(`[Tavily Tool ${searchId}] WARNING: exclude_domains is ${exclude_domains === undefined ? 'undefined' : typeof exclude_domains}. Setting to empty array.`);
+        exclude_domains = [];
       }
       
       // Ensure max_results is within valid range (1-10) even without schema validation

@@ -1240,7 +1240,8 @@ ${contextInstructions}`;
         
         // Add instruction for using the enhanced query with the Tavily tool
         if (userQuery && enhancedUserQuery && enhancedUserQuery !== userQuery) {
-          const searchInstruction = `\n\nIMPORTANT SEARCH INSTRUCTION: If you need to use the 'tavilySearch' tool to find information about the user's latest query ('${userQuery}'), you MUST use the following optimized query instead: "${enhancedUserQuery}". Pass this optimized query as the 'query' argument to the 'tavilySearch' tool. Always include the 'include_domains' parameter as an empty array ([]) if you don't need to limit the search to specific domains.`;
+          const searchInstruction = `\n\nIMPORTANT SEARCH INSTRUCTION: If you need to use the 'tavilySearch' tool to find information about the user's latest query ('${userQuery}'), you MUST use the following optimized query instead: "${enhancedUserQuery}". \n\nWhen using the tavilySearch tool with the o3-mini model, you MUST include ALL parameters:\n- query: "${enhancedUserQuery}"\n- include_domains: [] (empty array if no specific domains)\n- exclude_domains: [] (empty array if not excluding domains)\n- search_depth: "advanced"\n- max_results: 5\n- include_answer: false\n- include_raw_content: false\n- time_range: "day" (or "week", "month", "year" if longer timeframe needed)\n- topic: "general" (or "news" or "finance" if appropriate)\n\nThe o3-mini model requires ALL parameters and does not accept default values.`;
+          
           finalSystemPrompt += searchInstruction;
           console.log("[API Chat] Added enhanced search query instruction to system prompt.");
         }

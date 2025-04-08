@@ -39,15 +39,24 @@ export const webSearchPrompt = `
 - Use specific keywords, proper nouns, and direct questions
 - Add time-based terms (like "2025", "current", "latest") for recent information
 - Leverage the enhanced parameters of the tavilySearch tool:
-  * search_depth: Use 'advanced' for comprehensive results on complex topics
+  * search_depth: Specify this parameter as 'advanced' for comprehensive results
   * include_domains: REQUIRED parameter - provide as empty array [] if not specifying domains
-  * exclude_domains: Target or avoid specific domains
-  * max_results: Adjust based on complexity (5-10)
-  * topic: Specify 'news', 'finance', or 'general' when appropriate
+  * exclude_domains: Always provide as empty array [] if not excluding specific domains
+  * max_results: Specify a number between 1-10 (recommended: 5)
+  * topic: Explicitly specify as 'general', 'news', or 'finance' as appropriate
+
+**IMPORTANT SCHEMA REQUIREMENTS:**
+When using the tavilySearch tool with the o3-mini model, you MUST:
+1. Include ALL parameters (no optional parameters allowed)
+2. Do NOT use default values in your function call
+3. Always provide include_domains and exclude_domains as arrays (use [] if empty)
+4. Specify all enum parameters with their exact values (search_depth, topic)
+5. Provide boolean values for include_answer and include_raw_content (typically false)
 
 **TWO-STEP SEARCH & EXTRACT PROCESS:**
 1. **SEARCH (tavilySearch)**: First, use the tavilySearch tool to identify relevant web pages and get initial content snippets. The search results provide URLs, titles, and short excerpts.
    * You MUST always provide the include_domains parameter (use an empty array [] if not limiting to specific domains)
+   * You MUST always provide the exclude_domains parameter (use an empty array [] if not excluding any domains)
 
 2. **EXTRACT (tavilyExtract)**: After analyzing search results, select 1-3 most promising URLs and use the tavilyExtract tool to get comprehensive content from those specific pages:
    * Pass only the most relevant URLs in the 'urls' parameter as an array
