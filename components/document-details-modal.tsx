@@ -69,6 +69,19 @@ function getFileIcon(fileType: string) {
   }
 }
 
+// Helper function to extract just the filename from a path
+function getSimpleFileName(fullPath: string) {
+  // Extract filename from path (works for both slash and backslash separators)
+  const fileName = fullPath.split(/[\/\\]/).pop() || fullPath;
+  
+  // If filename is still too long, truncate it
+  if (fileName.length > 40) {
+    return fileName.substring(0, 37) + '...';
+  }
+  
+  return fileName;
+}
+
 // Helper function to get process status icon
 function getStatusIcon(status: string) {
   switch (status) {
@@ -196,7 +209,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {getFileIcon(document.fileType)}
-            <span className="truncate max-w-[80%]">{document.fileName}</span>
+            <span className="truncate max-w-[80%]">{getSimpleFileName(document.fileName)}</span>
           </DialogTitle>
           <DialogDescription>
             Detailed document information
@@ -214,7 +227,9 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">File Name</p>
-                <p className="text-sm break-words overflow-wrap-anywhere">{document.fileName}</p>
+                <div className="max-w-full overflow-hidden">
+                  <p className="text-sm overflow-wrap-anywhere break-words">{document.fileName}</p>
+                </div>
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">File Size</p>
@@ -239,7 +254,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
               <div className="space-y-1 col-span-2">
                 <p className="text-sm font-medium text-muted-foreground">Title</p>
                 <div className="max-w-full overflow-hidden">
-                  <p className="text-sm overflow-wrap-anywhere break-words">{document.title || '-'}</p>
+                  <p className="text-sm overflow-wrap-anywhere break-words">{document.title ? getSimpleFileName(document.title) : '-'}</p>
                 </div>
               </div>
             </div>
@@ -338,7 +353,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
           </TabsContent>
           
           <TabsContent value="technical" className="space-y-4">
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-4 max-h-[300px] overflow-y-auto pr-2">
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Document ID</p>
                 <div className="max-w-full overflow-hidden">
@@ -348,7 +363,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Blob URL</p>
                 <div className="max-w-full overflow-hidden">
-                  <p className="text-sm font-mono overflow-wrap-anywhere break-all">{document.blobUrl}</p>
+                  <p className="text-sm font-mono overflow-wrap-anywhere break-all max-h-[80px] overflow-y-auto">{document.blobUrl}</p>
                 </div>
               </div>
               <div className="space-y-1">
