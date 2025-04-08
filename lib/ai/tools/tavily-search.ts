@@ -85,6 +85,23 @@ export const tavilySearch = tool({
       });
       console.timeEnd(`tavily_search_${searchId}`);
 
+      // *** ADD THIS LOGGING BLOCK ***
+      console.log(`[Tavily Tool ${searchId}] Raw results received from Tavily (${response.results?.length || 0} results):`);
+      if (response.results && response.results.length > 0) {
+        response.results.forEach((result, index) => {
+          console.log(`  Raw Result ${index + 1}:`);
+          console.log(`    - Title: ${result.title || 'Untitled'}`);
+          console.log(`    - URL: ${result.url || 'No URL'}`);
+          console.log(`    - Score: ${result.score !== undefined ? result.score.toFixed(4) : 'N/A'}`); // Log the score
+          console.log(`    - Content Preview: ${(result.content || '').substring(0, 100)}...`);
+          // Ensure 'publishedDate' matches the actual field name from Tavily's response object
+          console.log(`    - Published Date: ${result.publishedDate || 'N/A'}`);
+        });
+      } else {
+        console.log(`  (No results returned by Tavily API)`);
+      }
+      // *** END LOGGING BLOCK ***
+
       // Log the raw results immediately after receiving them
       console.log(`[Tavily Tool ${searchId}] Raw results received from Tavily: ${response.results.length} results`);
       
