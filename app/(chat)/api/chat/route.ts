@@ -413,43 +413,6 @@ function formatExtractResultsAsContext(extractResults: any[]): string {
   return extractContextText;
 }
 
-/**
- * Formats Tavily extraction results for display in the chat interface
- * @param results The extraction results from the tavilyExtract tool
- */
-function formatTavilyExtractionResults(results: any[]): string {
-  if (!results || results.length === 0) {
-    return "No content was successfully extracted from the provided URLs.";
-  }
-  
-  let extractContextText = "## Extracted Web Content\n\n";
-  
-  results.forEach((result, index) => {
-    if (!result.success) {
-      extractContextText += `Source ${index + 1}: Error extracting content from ${result.url}\n`;
-      if (result.error) {
-        extractContextText += `Error: ${result.error}\n\n`;
-      }
-      return;
-    }
-    
-    extractContextText += `### Source ${index + 1}: ${result.title || 'Untitled'}\n`;
-    extractContextText += `URL: ${result.url}\n`;
-    
-    // Use full_content if available, otherwise use the summary content
-    const contentToUse = result.full_content || result.content || 'No content extracted';
-    extractContextText += `\n${contentToUse}\n`;
-    
-    if (result.date) {
-      extractContextText += `\nPublished: ${result.date}\n`;
-    }
-    
-    extractContextText += '\n---\n\n';
-  });
-  
-  return extractContextText;
-}
-
 export async function POST(request: Request) {
   // Start timing the entire POST handler
   console.time('total_request_duration');
@@ -1209,12 +1172,12 @@ ${contextInstructions}`;
                 
                 // Format and add extract results to context
                 if (extractResults.length > 0) {
-                  const formattedExtraction = formatTavilyExtractionResults(extractResults);
+                  const extractContextText = formatExtractResultsAsContext(extractResults);
                   
                   // Add extract context to web context
-                  if (formattedExtraction) {
-                    webContextText += formattedExtraction;
-                    console.log(`[API Chat] Added ${extractResults.length} extraction results to context`);
+                  if (extractContextText) {
+                    webContextText += extractContextText;
+                    console.log(`[API Chat] Added ${extractResults.length} extract results to context`);
                   }
                 }
               }
@@ -1277,7 +1240,7 @@ ${contextInstructions}`;
         
         // Add instruction for using the enhanced query with the Tavily tool
         if (userQuery && enhancedUserQuery && enhancedUserQuery !== userQuery) {
-          const searchInstruction = `\n\nIMPORTANT SEARCH INSTRUCTION: If you need to use the 'tavilySearch' tool to find information about the user's latest query ('${userQuery}'), you MUST use the following optimized query instead: "${enhancedUserQuery}". Pass this optimized query as the 'query' argument to the 'tavilySearch' tool.`;
+          const searchInstruction = `\n\nIMPORTANT SEARCH INSTRUCTION: If you need to use the 'tavilySearch' tool to find information about the user's latest query ('${userQuery}'), you MUST use the following optimized query instead: "${enhancedUserQuery}". Pass this optimized query as the 'query' argument to the 'tavilySearch' tool. Always include the 'include_domains' parameter as an empty array ([]) if you don't need to limit the search to specific domains.`;
           finalSystemPrompt += searchInstruction;
           console.log("[API Chat] Added enhanced search query instruction to system prompt.");
         }
@@ -1288,13 +1251,13 @@ ${contextInstructions}`;
           messages: messagesForAI,
           maxSteps: 5,
           experimental_activeTools: [
-            'getWeather',
-            'createDocument',
-            'updateDocument',
-            'requestSuggestions',
-            'tavilySearch',
-            'tavilyExtract',
-          ],
+                  'getWeather',
+                  'createDocument',
+                  'updateDocument',
+                  'requestSuggestions',
+                  'tavilySearch',
+                  'tavilyExtract',
+                ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
           tools: {
@@ -1471,7 +1434,7 @@ export async function DELETE(request: Request) {
     // Delete the chat
     logger.info(`Deleting chat: ${id}`, { userId: session.user.id });
     await deleteChatById({ id });
-    
+
     // Return success response
     return Response.json({ success: true });
   } catch (error) {
