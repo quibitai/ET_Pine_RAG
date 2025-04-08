@@ -5,6 +5,18 @@ import { FolderIcon, Loader2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
+// Define supported file types for RAG processing
+const SUPPORTED_FILE_EXTENSIONS = [
+  'pdf', 'docx', 'txt', 'md', 'csv', 'xlsx',
+  'json', 'jpg', 'jpeg', 'png', 'tiff'
+];
+
+// Helper function to check if a file is supported
+const isFileSupported = (file: File): boolean => {
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  return SUPPORTED_FILE_EXTENSIONS.includes(extension);
+};
+
 interface FolderUploadButtonProps {
   onUploadComplete?: (results: UploadResult[]) => void;
   className?: string;
@@ -36,16 +48,30 @@ export function FolderUploadButton({
   const [uploadProgress, setUploadProgress] = useState<{
     total: number;
     completed: number;
-  }>({ total: 0, completed: 0 });
+    skipped: number;
+  }>({ total: 0, completed: 0, skipped: 0 });
   
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFolderSelection = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+    const allFiles = Array.from(e.target.files || []);
+    if (!allFiles.length) return;
+
+    // Filter out unsupported file types
+    const files = allFiles.filter(isFileSupported);
+    const skippedCount = allFiles.length - files.length;
+    
+    if (skippedCount > 0) {
+      console.log(`Skipping ${skippedCount} unsupported files`);
+    }
+
+    if (!files.length) {
+      toast.error('No supported files found in the selected folder');
+      return;
+    }
 
     setIsUploading(true);
-    setUploadProgress({ total: files.length, completed: 0 });
+    setUploadProgress({ total: files.length, completed: 0, skipped: skippedCount });
 
     try {
       const uploadResults: UploadResult[] = [];
@@ -84,7 +110,8 @@ export function FolderUploadButton({
       }
       
       if (uploadResults.length > 0) {
-        toast.success(`Successfully uploaded ${uploadResults.length} files`);
+        const skippedMessage = skippedCount > 0 ? ` (${skippedCount} incompatible files skipped)` : '';
+        toast.success(`Successfully uploaded ${uploadResults.length} files${skippedMessage}`);
         onUploadComplete?.(uploadResults);
       } else {
         toast.error('Failed to upload any files');
@@ -94,7 +121,7 @@ export function FolderUploadButton({
       toast.error('Failed to upload folder');
     } finally {
       setIsUploading(false);
-      setUploadProgress({ total: 0, completed: 0 });
+      setUploadProgress({ total: 0, completed: 0, skipped: 0 });
       
       // Reset file input
       if (inputRef.current) {
@@ -104,6 +131,12 @@ export function FolderUploadButton({
   };
   
   const uploadFile = async (file: File, folderPath: string): Promise<UploadResult | null> => {
+    // Check if file is supported (redundant safety check)
+    if (!isFileSupported(file)) {
+      console.log(`Skipping unsupported file: ${file.name}`);
+      return null;
+    }
+    
     const formData = new FormData();
     formData.append('file', file);
     
@@ -158,6 +191,7 @@ export function FolderUploadButton({
             <Loader2Icon className="h-4 w-4 animate-spin" />
             <span>
               Uploading... ({uploadProgress.completed}/{uploadProgress.total})
+              {uploadProgress.skipped > 0 && ` (${uploadProgress.skipped} skipped)`}
             </span>
           </>
         ) : (
