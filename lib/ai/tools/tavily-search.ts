@@ -31,7 +31,7 @@ export const tavilySearch = tool({
     max_results = 7,
     include_answer = false,
     include_raw_content = false,
-    time_range,
+    time_range = 'month',
     topic = 'general'
   }) => {
     try {
@@ -80,8 +80,8 @@ export const tavilySearch = tool({
         max_results: validatedMaxResults, // Use validated value
         include_answer,
         include_raw_content,
-        ...(time_range && { time_range }),
-        ...(topic && { topic })
+        time_range,
+        topic
       });
       console.timeEnd(`tavily_search_${searchId}`);
 
