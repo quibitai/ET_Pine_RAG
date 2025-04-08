@@ -88,8 +88,16 @@ export function FolderUploadButton({
           try {
             // Get the relative path of the file within the directory structure
             const fullPath = (file as any).webkitRelativePath || '';
-            // Remove the top-level folder name from the path to get the relative path
-            const folderPath = fullPath.split('/').slice(1, -1).join('/');
+            
+            // Modified approach - keep at least the top-level folder name
+            // If path is just "folder/file.txt", folderPath becomes "folder"
+            // If path is "folder/subfolder/file.txt", folderPath becomes "folder/subfolder"
+            let folderPath = '';
+            const pathParts = fullPath.split('/');
+            if (pathParts.length > 1) {
+              // This will take all parts except the last one (filename)
+              folderPath = pathParts.slice(0, -1).join('/');
+            }
             
             const result = await uploadFile(file, folderPath);
             if (result) {
