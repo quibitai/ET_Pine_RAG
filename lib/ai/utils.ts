@@ -59,13 +59,13 @@ REQUIREMENTS:
 4. Include key domain-specific terminology
 5. Use quotation marks for exact phrases when appropriate
 6. Maintain the original intent of the query
-7. For time-sensitive information, include "2025" or other relevant time indicators ONLY if specifically mentioned by the user 
+7. For time-sensitive information, include "2025" or other relevant time indicators
 8. If the user asks for news AND creative concepts, prioritize generating an enhanced query focused only on the news aspect first. Creative concepts can be handled separately
 9. Avoid combining too many distinct concepts in a single query - focus on the core information need
-10. Focus on extracting the core entities and the user's key intent (e.g., 'news', 'status', 'details')
-11. Preserve important proper nouns (like 'Barataria Diversion Project', 'CPRA', etc.)
-12. Avoid adding generic date constraints unless explicitly specified by the user
-13. Keep the query concise but retain all essential named entities
+10. Critically evaluate the user's query. Extract the core topic, specific entities (like project names 'Barataria Diversion Project', organizations 'CPRA', people 'Governor'), and the user's intent (e.g., 'recent news', 'status update', 'halted')
+11. Generate a concise search query that includes these essential elements
+12. DO NOT remove key proper nouns or concepts from the original query
+13. Avoid adding generic date constraints like '2025' unless the user specifically mentioned a timeframe
 
 ${systemPrompt ? `DOMAIN CONTEXT (use relevant terms from this):\n${systemPrompt.substring(0, 500)}\n` : ''}
 

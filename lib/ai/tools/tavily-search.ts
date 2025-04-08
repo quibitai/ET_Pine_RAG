@@ -80,8 +80,8 @@ export const tavilySearch = tool({
         max_results: validatedMaxResults, // Use validated value
         include_answer,
         include_raw_content,
-        time_range,
-        topic
+        time_range, // Pass the potentially broader default ('month')
+        topic       // Pass the default topic ('general')
       });
       console.timeEnd(`tavily_search_${searchId}`);
 
