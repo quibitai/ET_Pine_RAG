@@ -55,10 +55,12 @@ export async function saveChat({
   id,
   userId,
   title,
+  selectedChatModel,
 }: {
   id: string;
   userId: string;
   title: string;
+  selectedChatModel: string;
 }) {
   try {
     return await db.insert(chat).values({
@@ -66,6 +68,7 @@ export async function saveChat({
       createdAt: new Date(),
       userId,
       title,
+      selectedChatModel,
     });
   } catch (error) {
     console.error('Failed to save chat in database');
@@ -120,13 +123,6 @@ export async function saveMessages({
     metadata: msg.metadata ?? null
   }));
   
-  // Add debugging for assistant messages with metadata
-  const assistantMessage = messages.find(m => m.role === 'assistant');
-  if (assistantMessage) {
-    console.log('[VERCEL DEBUG] Saving messages. Metadata for assistant:', 
-      JSON.stringify(assistantMessage.metadata, null, 2));
-  }
-  
   try {
     return await db.insert(message).values(messagesWithRequiredFields);
   } catch (error) {
@@ -143,20 +139,11 @@ export async function saveMessages({
 
 export async function getMessagesByChatId({ id }: { id: string }) {
   try {
-    const messagesWithMetadata = await db
+    return await db
       .select()
       .from(message)
       .where(eq(message.chatId, id))
       .orderBy(asc(message.createdAt));
-    
-    // Add debugging for retrieved messages with metadata
-    const assistantMessage = messagesWithMetadata.find(m => m.role === 'assistant');
-    if (assistantMessage) {
-      console.log(`[VERCEL DEBUG] Fetched ${messagesWithMetadata.length} messages. First assistant metadata:`, 
-        JSON.stringify(assistantMessage.metadata, null, 2));
-    }
-    
-    return messagesWithMetadata;
   } catch (error) {
     console.error('Failed to get messages by chat id from database', error);
     throw error;

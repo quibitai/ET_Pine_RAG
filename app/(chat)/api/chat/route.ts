@@ -673,7 +673,12 @@ export async function POST(request: Request) {
       console.timeEnd('generate_chat_title');
 
       console.time('save_new_chat');
-      await saveChat({ id, userId: session.user.id, title });
+      await saveChat({ 
+        id, 
+        userId: session.user.id, 
+        title,
+        selectedChatModel 
+      });
       console.timeEnd('save_new_chat');
     } else {
       if (chat.userId !== session.user.id) {

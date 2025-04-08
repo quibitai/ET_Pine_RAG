@@ -1,0 +1,1 @@
+ALTER TABLE "Chat" ADD COLUMN "selectedChatModel" text DEFAULT 'echotango-bit';

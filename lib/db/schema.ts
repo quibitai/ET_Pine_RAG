@@ -32,6 +32,7 @@ export const chat = pgTable('Chat', {
   visibility: varchar('visibility', { enum: ['public', 'private'] })
     .notNull()
     .default('private'),
+  selectedChatModel: text('selectedChatModel').default('echotango-bit'),
 }, (table) => ({
   userIdIdx: index('chat_userId_idx').on(table.userId)
 }));
