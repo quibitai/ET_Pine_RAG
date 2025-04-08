@@ -196,7 +196,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {getFileIcon(document.fileType)}
-            <span className="truncate">{document.fileName}</span>
+            <span className="truncate max-w-[85%]">{document.fileName}</span>
           </DialogTitle>
           <DialogDescription>
             Detailed document information
@@ -339,19 +339,21 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Document ID</p>
-                <p className="text-sm font-mono break-all">{document.id}</p>
+                <p className="text-sm font-mono break-all overflow-hidden">{document.id}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Blob URL</p>
-                <p className="text-sm font-mono break-all">{document.blobUrl}</p>
+                <div className="max-w-full overflow-hidden">
+                  <p className="text-sm font-mono overflow-wrap-anywhere break-all">{document.blobUrl}</p>
+                </div>
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Created (ISO)</p>
-                <p className="text-sm font-mono">{new Date(document.createdAt).toISOString()}</p>
+                <p className="text-sm font-mono overflow-wrap-anywhere break-all">{new Date(document.createdAt).toISOString()}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Updated (ISO)</p>
-                <p className="text-sm font-mono">{new Date(document.updatedAt).toISOString()}</p>
+                <p className="text-sm font-mono overflow-wrap-anywhere break-all">{new Date(document.updatedAt).toISOString()}</p>
               </div>
             </div>
           </TabsContent>

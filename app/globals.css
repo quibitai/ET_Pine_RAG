@@ -20,6 +20,13 @@
     .text-balance {
         text-wrap: balance;
     }
+    
+    .overflow-wrap-anywhere {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        hyphens: auto;
+        max-width: 100%;
+    }
 }
 
 @layer base {
