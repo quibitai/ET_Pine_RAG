@@ -192,11 +192,11 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {getFileIcon(document.fileType)}
-            <span className="truncate max-w-[85%]">{document.fileName}</span>
+            <span className="truncate max-w-[80%]">{document.fileName}</span>
           </DialogTitle>
           <DialogDescription>
             Detailed document information
@@ -214,7 +214,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">File Name</p>
-                <p className="text-sm break-words">{document.fileName}</p>
+                <p className="text-sm break-words overflow-wrap-anywhere">{document.fileName}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">File Size</p>
@@ -226,7 +226,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Folder Path</p>
-                <p className="text-sm break-words">{document.folderPath || '-'}</p>
+                <p className="text-sm overflow-wrap-anywhere break-words">{document.folderPath || '-'}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Created</p>
@@ -238,7 +238,9 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
               </div>
               <div className="space-y-1 col-span-2">
                 <p className="text-sm font-medium text-muted-foreground">Title</p>
-                <p className="text-sm break-words">{document.title || '-'}</p>
+                <div className="max-w-full overflow-hidden">
+                  <p className="text-sm overflow-wrap-anywhere break-words">{document.title || '-'}</p>
+                </div>
               </div>
             </div>
             
@@ -339,7 +341,9 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Document ID</p>
-                <p className="text-sm font-mono break-all overflow-hidden">{document.id}</p>
+                <div className="max-w-full overflow-hidden">
+                  <p className="text-sm font-mono overflow-wrap-anywhere break-all">{document.id}</p>
+                </div>
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Blob URL</p>
@@ -349,11 +353,15 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Created (ISO)</p>
-                <p className="text-sm font-mono overflow-wrap-anywhere break-all">{new Date(document.createdAt).toISOString()}</p>
+                <div className="max-w-full overflow-hidden">
+                  <p className="text-sm font-mono overflow-wrap-anywhere break-all">{new Date(document.createdAt).toISOString()}</p>
+                </div>
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Updated (ISO)</p>
-                <p className="text-sm font-mono overflow-wrap-anywhere break-all">{new Date(document.updatedAt).toISOString()}</p>
+                <div className="max-w-full overflow-hidden">
+                  <p className="text-sm font-mono overflow-wrap-anywhere break-all">{new Date(document.updatedAt).toISOString()}</p>
+                </div>
               </div>
             </div>
           </TabsContent>

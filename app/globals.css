@@ -24,8 +24,12 @@
     .overflow-wrap-anywhere {
         overflow-wrap: anywhere;
         word-break: break-word;
+        word-wrap: break-word;
         hyphens: auto;
         max-width: 100%;
+        white-space: normal;
+        display: inline-block;
+        width: 100%;
     }
 }
 
