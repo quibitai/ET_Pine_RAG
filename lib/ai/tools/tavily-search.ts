@@ -10,22 +10,19 @@ const tvly = tavily({
 // Minimum relevance score threshold for filtering out low-quality results
 const MIN_RELEVANCE_SCORE = 0.5;
 
-// Define parameters schema
-const tavilySearchParams = z.object({
-  query: z.string().describe('The search query to look up. Make this specific, clear, and concise (under 300 characters).'),
-  include_domains: z.array(z.string()).describe('List of domains to specifically include in the search (provide empty array [] if no specific domains needed)'),
-  exclude_domains: z.array(z.string()).optional().default([]).describe('Optional list of domains to exclude from the search'),
-  search_depth: z.enum(['basic', 'advanced']).optional().default('advanced').describe('The depth of search to perform. Default is "advanced".'),
-  max_results: z.number().optional().default(5).describe('Maximum number of results to return (1-10). Default is 5.'),
-  include_answer: z.boolean().optional().default(false).describe('Whether to include an AI-generated answer summary. Default is false.'),
-  include_raw_content: z.boolean().optional().default(false).describe('Whether to include the raw HTML content. Default is false.'),
-  time_range: z.enum(['day', 'week', 'month', 'year']).optional().describe('Time range for search results.'),
-  topic: z.enum(['general', 'news', 'finance']).optional().default('general').describe('Specific topic to focus the search on'),
-});
-
 export const tavilySearch = tool({
   description: 'Search the web for real-time information using Tavily search engine. Use this tool to find current information, news, and data not available in the AI\'s training data. Perfect for fact-checking, finding recent events, and answering queries about current information.',
-  parameters: tavilySearchParams.required(['query', 'include_domains']),
+  parameters: z.object({
+    query: z.string().describe('The search query to look up. Make this specific, clear, and concise (under 300 characters).'),
+    include_domains: z.array(z.string()).describe('List of domains to specifically include in the search (provide empty array [] if no specific domains needed)'),
+    exclude_domains: z.array(z.string()).optional().default([]).describe('Optional list of domains to exclude from the search'),
+    search_depth: z.enum(['basic', 'advanced']).optional().default('advanced').describe('The depth of search to perform. Default is "advanced".'),
+    max_results: z.number().optional().default(5).describe('Maximum number of results to return (1-10). Default is 5.'),
+    include_answer: z.boolean().optional().default(false).describe('Whether to include an AI-generated answer summary. Default is false.'),
+    include_raw_content: z.boolean().optional().default(false).describe('Whether to include the raw HTML content. Default is false.'),
+    time_range: z.enum(['day', 'week', 'month', 'year']).optional().describe('Time range for search results.'),
+    topic: z.enum(['general', 'news', 'finance']).optional().default('general').describe('Specific topic to focus the search on'),
+  }),
   execute: async ({ 
     query, 
     include_domains = [], 
