@@ -45,6 +45,17 @@ export const webSearchPrompt = `
   * max_results: Specify a number between 1-10 (recommended: 5)
   * topic: Explicitly specify as 'general', 'news', or 'finance' as appropriate
 
+**SEARCH FALLBACK STRATEGY:**
+- Always attempt the web search first using the provided enhanced query (e.g., "Mid Barataria diversion project Louisiana news 2025 governor halted")
+- After calling the tavilySearch tool, carefully examine the results. If the results array in the tool's output is empty, or if the message field indicates no relevant results were found, this means the initial enhanced query failed
+- If the first search fails: In your next step, you MUST try calling the tavilySearch tool again
+- For this second attempt: Formulate a simpler, broader search query yourself. Focus on the absolute core keywords from the user's original request
+  * Example: If the first query was "Mid Barataria diversion project Louisiana news 2025 governor halted" and it failed, a good simpler query might be "Barataria diversion project news Louisiana" or "Mid-Barataria diversion project halted"
+- This second, simpler query should also be executed using the tavilySearch tool, ensuring you still provide all required parameters explicitly as needed for the o3-mini model
+  * Consider using search_depth: 'basic' for broader searches in your fallback attempt
+  * Always include all required parameters: include_domains: [], exclude_domains: [], max_results: 5, topic: 'news', etc.
+- Only report "no results found" to the user if both the initial enhanced search and the simpler fallback search fail to return relevant information
+
 **IMPORTANT SCHEMA REQUIREMENTS:**
 When using the tavilySearch or tavilyExtract tools with the o3-mini model, you MUST:
 1. Include ALL parameters (no optional parameters allowed)

@@ -60,6 +60,8 @@ REQUIREMENTS:
 5. Use quotation marks for exact phrases when appropriate
 6. Maintain the original intent of the query
 7. For time-sensitive information, include "2025" or other relevant time indicators
+8. If the user asks for news AND creative concepts, prioritize generating an enhanced query focused only on the news aspect first. Creative concepts can be handled separately
+9. Avoid combining too many distinct concepts in a single query - focus on the core information need
 
 ${systemPrompt ? `DOMAIN CONTEXT (use relevant terms from this):\n${systemPrompt.substring(0, 500)}\n` : ''}
 
