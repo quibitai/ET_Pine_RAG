@@ -8,7 +8,7 @@ const tvly = tavily({
 });
 
 // Minimum relevance score threshold for filtering out low-quality results
-const MIN_RELEVANCE_SCORE = 0.5;
+const MIN_RELEVANCE_SCORE = 0.35;
 
 export const tavilySearch = tool({
   description: 'Search the web for real-time information using Tavily search engine. Use this tool to find current information, news, and data not available in the AI\'s training data. Perfect for fact-checking, finding recent events, and answering queries about current information.',
