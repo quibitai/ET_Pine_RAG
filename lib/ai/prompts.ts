@@ -46,12 +46,12 @@ export const webSearchPrompt = `
   * topic: Explicitly specify as 'general', 'news', or 'finance' as appropriate
 
 **IMPORTANT SCHEMA REQUIREMENTS:**
-When using the tavilySearch tool with the o3-mini model, you MUST:
+When using the tavilySearch or tavilyExtract tools with the o3-mini model, you MUST:
 1. Include ALL parameters (no optional parameters allowed)
 2. Do NOT use default values in your function call
 3. Always provide include_domains and exclude_domains as arrays (use [] if empty)
 4. Specify all enum parameters with their exact values (search_depth, topic)
-5. Provide boolean values for include_answer and include_raw_content (typically false)
+5. Provide boolean values for include_answer, include_raw_content, and include_images (typically false)
 
 **TWO-STEP SEARCH & EXTRACT PROCESS:**
 1. **SEARCH (tavilySearch)**: First, use the tavilySearch tool to identify relevant web pages and get initial content snippets. The search results provide URLs, titles, and short excerpts.
@@ -59,10 +59,11 @@ When using the tavilySearch tool with the o3-mini model, you MUST:
    * You MUST always provide the exclude_domains parameter (use an empty array [] if not excluding any domains)
 
 2. **EXTRACT (tavilyExtract)**: After analyzing search results, select 1-3 most promising URLs and use the tavilyExtract tool to get comprehensive content from those specific pages:
-   * Pass only the most relevant URLs in the 'urls' parameter as an array
-   * Consider using extract_depth='advanced' for complex topics requiring in-depth information
-   * Only set include_images=true when visual content is specifically requested
-   * default max_tokens_per_url is suitable for most uses (8000)
+   * You MUST provide ALL parameters explicitly:
+     - urls: Pass array of 1-3 most relevant URLs from search results
+     - extract_depth: Use "basic" for faster extraction or "advanced" for more comprehensive content
+     - include_images: Specify as false unless visual content is specifically requested
+     - max_tokens_per_url: Specify as 8000 (recommended) or adjust based on needs (1000-16000)
 
 This two-step approach is more efficient than trying to get full content during search, as it allows you to selectively extract only from the most promising sources.
 
